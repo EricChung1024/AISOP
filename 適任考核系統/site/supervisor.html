@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>適任考核系統｜員工總覽</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main>
+  <h1>員工總覽</h1>
+  <div id="app"></div>
+</main>
+<script type="module">
+import { requireRole } from './js/guard.js';
+import { renderNav } from './js/ui.js';
+const me = await requireRole('supervisor');
+renderNav(me, 'supervisor.html');
+</script>
+</body>
+</html>
