@@ -60,7 +60,7 @@ begin
     else 0 end;
   v_score := round(v_score, 1);
   v_passed := v_score >= 80;
-  update attempts set score = v_score, passed = v_passed, status = 'done', submitted_at = now() where id = p_attempt;
+  update attempts set score = v_score, passed = v_passed, status = 'done', submitted_at = coalesce(submitted_at, now()) where id = p_attempt;
   return jsonb_build_object('status', 'done', 'attempt_id', p_attempt, 'score', v_score,
                             'passed', v_passed, 'items', _attempt_report(p_attempt));
 end $$;
