@@ -64,7 +64,7 @@ export default async function ({ page, base, sql, shot }) {
   await picks.nth(1).check();
   await page.click('#mark-reviewed');
   await page.waitForSelector('.notice.ok');
-  assert.equal((await sql(`select count(*)::int c from questions where source = 'legacy' and reviewed`))[0].c, 2);
+  assert.equal((await sql(`select count(*)::int c from questions where source in ('legacy', 'rules_ext') and reviewed`))[0].c, 2);
   await page.locator('table.review tbody tr').first().locator('summary').click();
   await shot('supervisor-review');
 
