@@ -131,7 +131,7 @@ begin
     if q.qtype = 'short' then
       v_has_short := true;
       insert into attempt_answers (attempt_id, question_id, text_answer)
-      values (p_attempt, q.id, coalesce(a ->> 'text', ''));
+      values (p_attempt, q.id, left(coalesce(a ->> 'text', ''), 5000));   -- 作答上限 5000 字
     else
       v_shown := case when a is not null and jsonb_typeof(a -> 'choice') = 'number' then (a ->> 'choice')::int end;
       v_orig := case when v_shown is not null and v_shown >= 0 and v_shown < jsonb_array_length(qq -> 'perm')

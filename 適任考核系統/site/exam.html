@@ -65,7 +65,7 @@ function renderExam(exam) {
   const draw = () => {
     const q = qs[cur];
     const input = q.qtype === 'short'
-      ? h('textarea', { 'data-qid': q.id, placeholder: '請寫出你的回覆', oninput: (ev) => {
+      ? h('textarea', { 'data-qid': q.id, placeholder: '請寫出你的回覆（最多 5000 字）', maxlength: 5000, oninput: (ev) => {
           const t = ev.target.value;
           if (t.trim()) ans.set(q.id, { question_id: q.id, text: t }); else ans.delete(q.id);
           drawNav();

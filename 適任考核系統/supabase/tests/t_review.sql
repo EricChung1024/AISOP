@@ -179,4 +179,12 @@ begin
      and (get_employee_detail('aaaaaaaa-0000-0000-0000-000000000002') -> 'wrong')::text not like '%Q-b%', '乙只有自己的錯題 Q-c';
 end $$;
 
+-- R7：筆記過長只保留前 2000 字
+do $$ begin
+  perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
+  perform set_wrong_note('Q-b', repeat('字', 3000));
+  perform t_admin();
+  assert (select length(note) from wrong_book where user_id = 'aaaaaaaa-0000-0000-0000-000000000001' and question_id = 'Q-b') = 2000, '筆記上限 2000 字';
+end $$;
+
 rollback;

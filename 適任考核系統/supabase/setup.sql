@@ -299,7 +299,7 @@ begin
     if q.qtype = 'short' then
       v_has_short := true;
       insert into attempt_answers (attempt_id, question_id, text_answer)
-      values (p_attempt, q.id, coalesce(a ->> 'text', ''));
+      values (p_attempt, q.id, left(coalesce(a ->> 'text', ''), 5000));   -- 作答上限 5000 字
     else
       v_shown := case when a is not null and jsonb_typeof(a -> 'choice') = 'number' then (a ->> 'choice')::int end;
       v_orig := case when v_shown is not null and v_shown >= 0 and v_shown < jsonb_array_length(qq -> 'perm')
@@ -465,7 +465,7 @@ end $$;
 
 create function set_wrong_note(p_question text, p_note text) returns void
 language sql security definer set search_path = public as $$
-  update wrong_book set note = p_note where user_id = auth.uid() and question_id = p_question
+  update wrong_book set note = left(p_note, 2000) where user_id = auth.uid() and question_id = p_question  -- 筆記上限 2000 字
 $$;
 
 create function set_wrong_status(p_question text, p_status text) returns void

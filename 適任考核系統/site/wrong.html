@@ -49,7 +49,7 @@ function renderWrong(w) {
     const mark = i === w.correct_index ? '✔ 正確答案' : i === my.choice ? '✘ 你當時的選擇' : '';
     return h('div', { class: `option ${cls}` }, h('span', {}, text), mark ? h('strong', {}, `　${mark}`) : null);
   }));
-  const note = h('textarea', { class: 'note', placeholder: '我的筆記：為什麼會錯？', 'aria-label': '我的筆記', style: 'min-height:60px' }, w.note || '');
+  const note = h('textarea', { class: 'note', placeholder: '我的筆記：為什麼會錯？', maxlength: 2000, 'aria-label': '我的筆記', style: 'min-height:60px' }, w.note || '');
   const saved = h('span', { class: 'muted' });
   note.addEventListener('blur', async () => {
     try { await rpc('set_wrong_note', { p_question: w.question_id, p_note: note.value }); saved.className = 'saved'; saved.textContent = '已儲存'; }

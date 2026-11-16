@@ -103,7 +103,7 @@ end $$;
 
 create function set_wrong_note(p_question text, p_note text) returns void
 language sql security definer set search_path = public as $$
-  update wrong_book set note = p_note where user_id = auth.uid() and question_id = p_question
+  update wrong_book set note = left(p_note, 2000) where user_id = auth.uid() and question_id = p_question  -- 筆記上限 2000 字
 $$;
 
 create function set_wrong_status(p_question text, p_status text) returns void

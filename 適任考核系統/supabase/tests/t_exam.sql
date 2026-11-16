@@ -154,4 +154,13 @@ begin
   end loop;
 end $$;
 
+-- S10：簡答作答過長（貼入超大文字）只保留前 5000 字
+do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid;
+begin
+  perform t_as(a); att := (start_exam(2) ->> 'attempt_id')::uuid;
+  perform submit_exam(att, jsonb_build_array(jsonb_build_object('question_id', 'S-2', 'text', repeat('字', 6000))));
+  perform t_admin();
+  assert (select length(text_answer) from attempt_answers where attempt_id = att and question_id = 'S-2') = 5000, '簡答作答上限 5000 字';
+end $$;
+
 rollback;
