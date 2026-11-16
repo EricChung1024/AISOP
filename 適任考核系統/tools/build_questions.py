@@ -193,6 +193,76 @@ def legacy_short(rows_short, rows_multi):
     return out
 
 
+# ---------- 舊案例依總表改寫（「總表延伸」） ----------
+CASE_ABILITY = {"查核": "check", "判斷": "boundary", "回覆": "reply", "處理": "next", "升級": "escalate"}
+
+
+def load_case_map(data_dir=None):
+    """讀 tools/data/case_map_*.json：案例編號 → {rules, check, boundary, reply, next, escalate, mcq}。"""
+    import json
+    d = Path(data_dir) if data_dir else Path(__file__).resolve().parent / "data"
+    out = {}
+    for f in sorted(d.glob("case_map_*.json")):
+        out.update(json.loads(f.read_text(encoding="utf-8")))
+    return out
+
+
+def _ext(qid, stage, qtype, stem, cid, ids, error_type, red, **kw):
+    q = {
+        "id": qid, "stage": stage, "qtype": qtype, "stem": stem, "options": None, "correct_index": None,
+        "explanation": "", "error_type": error_type, "error_detail": None, "option_errors": None,
+        "source": "rules_ext", "source_ref": f"{cid}:{'+'.join(ids)}", "reviewed": False, "red_line": red,
+        "shuffle": True,
+    }
+    q.update(kw)
+    return q
+
+
+def fused_questions(rules, short_rows, mcq_rows, multi_rows, case_map):
+    """已對應到總表規則的案例：保留舊情境，答案與得分點改用總表規則寫成。"""
+    rule = {r["編號"]: (clean(r["最新版規則"]), r["紅線"] == "★") for r in rules if r["狀態"] == "現行"}
+    out = []
+    for cid in sorted(case_map):
+        e = case_map[cid]
+        ids = e["rules"]
+        label = "、".join(ids)
+        red = any(rule[i][1] for i in ids)
+        etype = "違反紅線" if red else LEGACY_ERROR
+        stage = stage_of(ids[0])
+        for row in (r for r in short_rows if r["案例編號"] == cid):
+            ref = e[CASE_ABILITY[row["能力面向"]]]
+            out.append(_ext("L-" + row["題號"], stage, "short", f"{row['生活情境']}\n\n{row['題目'].split(chr(10) * 2)[-1]}",
+                            cid, ids, etype, red, reference_answer=ref,
+                            rubric=[x.strip() for x in ref.split("；") if x.strip()],
+                            key_error=row["關鍵失誤"], error_detail=row["關鍵失誤"],
+                            explanation=f"{ref}（對應總表規則 {label}）"))
+        for row in (r for r in mcq_rows if r["案例編號"] == cid):
+            opts = re.findall(r"^[ABC]\. (.*)$", row["題目"], re.M)
+            ci = "ABC".index(row["正確答案"])
+            opts[ci] = e["mcq"]
+            scene = row["題目"].split("\n", 1)[1].split("\n\n")[0]
+            out.append(_ext("L-" + row["題號"], stage, "mcq", scene + "\n\n以下哪一個回覆最適合？", cid, ids, etype, red,
+                            options=opts, correct_index=ci, error_detail=row["關鍵失誤"],
+                            explanation=f"對應總表規則 {label}：{rule[ids[0]][0].rstrip('。')}。判斷重點：{e['boundary']}"))
+        for row in (r for r in multi_rows if r["案例編號"] == cid):
+            m = re.search(r"【第一輪】(.*?)\n你的回覆：「(.*?)」\n\n【第二輪】顧客接著說：「(.*?)」", row["題目"], re.S)
+            stem = (f"【第一輪】{m[1]}\n你先前的回覆：「{e['mcq']}」\n\n【第二輪】顧客接著說：「{m[3]}」\n"
+                    "請寫出你的第二輪回覆。")
+            out.append(_ext("L-" + row["題號"], stage, "short", stem, cid, ids, etype, red,
+                            reference_answer=f"{e['reply']}；{e['boundary']}", rubric=[e["reply"], e["boundary"]],
+                            key_error=row["關鍵失誤"], error_detail=row["關鍵失誤"],
+                            explanation=f"{e['reply']}；{e['boundary']}（對應總表規則 {label}）"))
+    return out
+
+
+def all_case_questions(rules, short_rows, mcq_rows, multi_rows, case_map):
+    """700 題：有對應總表規則的案例走「總表延伸」，其餘維持原本通用內容（未審核）。"""
+    mapped = set(case_map)
+    rest = lambda rows: [r for r in rows if r["案例編號"] not in mapped]  # noqa: E731
+    return (fused_questions(rules, short_rows, mcq_rows, multi_rows, case_map)
+            + legacy_mcq(rest(mcq_rows)) + legacy_short(rest(short_rows), rest(multi_rows)))
+
+
 def main(out_path):
     import csv
     import json
@@ -211,8 +281,8 @@ def main(out_path):
           + conflict_questions(read_sheet(xlsx, "新人問答測試"))
           + rumor_questions(read_sheet(xlsx, "傳言（不採用）"))
           + tip_questions(read_sheet(xlsx, "經驗談"))
-          + legacy_mcq(rd("電商客服_最佳回覆選擇題100.csv"))
-          + legacy_short(rd("電商客服_生活化情境500題_含得分點.csv"), rd("電商客服_多輪追問題100.csv")))
+          + all_case_questions(rules, rd("電商客服_生活化情境500題_含得分點.csv"), rd("電商客服_最佳回覆選擇題100.csv"),
+                               rd("電商客服_多輪追問題100.csv"), load_case_map()))
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(json.dumps(qs, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n")
     return len(qs)

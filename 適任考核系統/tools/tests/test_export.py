@@ -50,7 +50,11 @@ class ExportTest(unittest.TestCase):
         r = read(self.export([q])[1])[0]
         self.assertEqual(r["題型"], "情境簡答")
         self.assertEqual((r["正確答案"], r["參考答案"], r["得分點"]), ("", "參考", "點一 ／ 點二"))
-        self.assertEqual((r["審核狀態"], r["來源"], r["紅線題"]), ("待主管審核", "舊題庫", ""))
+        self.assertEqual((r["審核狀態"], r["來源"], r["紅線題"]), ("待主管審核", "舊題庫（通用內容，未對應總表）", ""))
+
+    def test_extended_source_has_its_own_label(self):
+        r = read(self.export([mcq(source="rules_ext", source_ref="C001:2-2", reviewed=False)])[1])[0]
+        self.assertEqual((r["來源"], r["來源編號"]), ("總表延伸（舊案例依總表改寫）", "C001:2-2"))
 
     def test_special_stage_names(self):
         self.assertEqual(ex.stage_name(0), "綜合適任考核")

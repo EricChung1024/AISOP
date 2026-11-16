@@ -82,7 +82,8 @@ class LegacyTest(unittest.TestCase):
             data = json.loads(out.read_text(encoding="utf-8"))
         ids = [q["id"] for q in data]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(sum(1 for q in data if q["source"] == "legacy"), 700)
+        self.assertEqual(sum(1 for q in data if q["source"] in ("legacy", "rules_ext")), 700)
+        self.assertEqual(sum(1 for q in data if q["source"] == "rules_ext"), 448)
         self.assertGreaterEqual(sum(1 for q in data if q["source"] == "rules"), 82)  # 57+12+2+11 起跳
 
 

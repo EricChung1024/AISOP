@@ -37,6 +37,24 @@
 
 建立帳號需要管理者金鑰，**不能放在網站裡**，所以放在 Supabase Edge Function `create-employees`（原始碼：`supabase/functions/create-employees/`）。流程：驗證呼叫者的登入權杖 → 確認是主管 → 才動用管理者金鑰（只存在函式環境變數）。更新函式：`supabase functions deploy create-employees`。純邏輯可用 `node --test "supabase/functions/create-employees/*.test.js"` 測試。
 
+## 二之一、題庫來源與匯入
+
+題庫共 785 題：總表規則題 85 題（已審核）＋舊題庫 700 題（未審核）。舊題庫 100 個案例中，**64 個對應得到總表規則**，答案與得分點依總表改寫（`tools/data/case_map_*.json`，來源 `rules_ext`，448 題）；其餘 36 個總表沒有規則，維持原通用內容（來源 `legacy`，252 題）。對照表見交接包的 `案例對照_題目到總表規則.csv`。
+
+匯入 Supabase（資料量大，改用「案例層級」資料，由資料庫自己展開成 700 題）：
+```
+python -X utf8 -I 適任考核系統/tools/gen_case_import.py 適任考核系統/tools/out
+node 適任考核系統/runner/check_case_import.mjs     # 本機驗證展開結果與構建器逐列一致
+```
+再依序執行 `tools/out/case_import_1.sql`～`_4.sql`（可重複執行，不會產生重複題目）。
+
+## 二之二、交接包（給評分系統開發者）
+
+```
+python -X utf8 -I 適任考核系統/tools/export_handoff.py
+```
+產生 `適任考核系統/交接/評分系統資料包/` 與同名 `.zip`：全部題庫（含標準答案與得分點）、總表原始資料、題目→規則對照、資料庫快照、資料表結構，以及說明現行評分邏輯與缺口的 `00_請先讀我.md`。內容含標準答案，`交接/` 已加入 `.gitignore`，請勿提交或公開。
+
 ## 三、考核分級與調整
 
 | 級別 | 階段 | 題數 | 及格 | 說明 |

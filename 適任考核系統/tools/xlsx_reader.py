@@ -15,6 +15,13 @@ def _col_index(ref: str) -> int:
     return n - 1
 
 
+def sheet_names(path: str) -> list:
+    """依工作簿順序回傳所有工作表名稱。"""
+    with zipfile.ZipFile(path) as z:
+        wb = ET.fromstring(z.read("xl/workbook.xml"))
+    return [s.get("name") for s in wb.iter(_M + "sheet")]
+
+
 def _sheet_path(z: zipfile.ZipFile, sheet_name: str) -> str:
     wb = ET.fromstring(z.read("xl/workbook.xml"))
     rid = None
@@ -31,8 +38,8 @@ def _sheet_path(z: zipfile.ZipFile, sheet_name: str) -> str:
     raise KeyError(sheet_name)
 
 
-def read_sheet(path: str, sheet_name: str) -> list:
-    """第 1 列為欄名，回傳其後每列的 dict；空儲存格為空字串。"""
+def read_rows(path: str, sheet_name: str) -> list:
+    """回傳工作表的每一列（list[str]），不假設標題列；空儲存格為空字串。"""
     with zipfile.ZipFile(path) as z:
         root = ET.fromstring(z.read(_sheet_path(z, sheet_name)))
     table = []
@@ -44,5 +51,11 @@ def read_sheet(path: str, sheet_name: str) -> list:
             cells[_col_index(c.get("r"))] = text or (v.text if v is not None else "") or ""
         width = max(cells) + 1 if cells else 0
         table.append([cells.get(i, "") for i in range(width)])
+    return table
+
+
+def read_sheet(path: str, sheet_name: str) -> list:
+    """第 1 列為欄名，回傳其後每列的 dict；空儲存格為空字串。"""
+    table = read_rows(path, sheet_name)
     header, body = table[0], table[1:]
     return [{h: (r[i] if i < len(r) else "") for i, h in enumerate(header)} for r in body]

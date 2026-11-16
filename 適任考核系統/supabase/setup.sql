@@ -164,6 +164,7 @@ where p.role = 'employee';
 revoke all on all tables in schema public from anon, authenticated;
 grant select on profiles, attempts, attempt_answers, wrong_book, v_stage_summary, v_error_counts, v_assessment_status, v_assessments, assessments to authenticated;
 revoke execute on function handle_new_user() from public, anon, authenticated;
+revoke all on function is_supervisor() from public, anon;
 grant execute on function is_supervisor() to authenticated;
 
 -- ===== 003_exam_rpc.sql =====
