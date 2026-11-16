@@ -10,10 +10,15 @@ export const STAGE_NAMES = {
   7: '第 7 章 退換貨與退款',
   8: '第 8 章 客訴與升級',
   9: '第 9 章 工單與結案',
+  10: '試用期考核',
+  11: '半年考核',
 };
 
 export function stageShort(stage) {
-  return stage === 0 ? '綜合' : `第 ${stage} 章`;
+  if (stage === 0) return '綜合';
+  if (stage === 10) return '試用期';
+  if (stage === 11) return '半年';
+  return `第 ${stage} 章`;
 }
 
 export function stageLabel(stage) {
@@ -64,4 +69,17 @@ export function fmtDate(iso) {
   if (!d || Number.isNaN(d.getTime())) return '—';
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** 考核期限狀態。due 為 'YYYY-MM-DD'（或 null）；passed 為該考核已通過。回傳 {label, level}，level：ok／soon（30 天內）／overdue／none。 */
+export function dueStatus(due, passed, today = new Date()) {
+  if (passed) return { label: '已通過', level: 'ok' };
+  if (!due) return { label: '未設定到職日', level: 'none' };
+  const d = new Date(`${due}T00:00:00`);
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((d - t) / 86400000);
+  if (days < 0) return { label: `已逾期 ${-days} 天（${due}）`, level: 'overdue' };
+  if (days === 0) return { label: `今天到期（${due}）`, level: 'soon' };
+  if (days <= 30) return { label: `剩 ${days} 天（${due}）`, level: 'soon' };
+  return { label: `期限 ${due}`, level: 'ok' };
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { errorTypeCounts, stageLabel, statusOf, esc, errorMessage, fmtDate } from './format.js';
+import { errorTypeCounts, stageLabel, stageShort, statusOf, esc, errorMessage, fmtDate, dueStatus } from './format.js';
 
 test('errorTypeCounts counts rows and sorts by count desc then name', () => {
   const rows = ['B', 'A', 'C', 'B', 'A', 'A'].map((error_type) => ({ error_type }));
@@ -28,7 +28,9 @@ test('errorTypeCounts ignores rows without an error type', () => {
 test('stageLabel names comprehensive exam and chapters', () => {
   assert.equal(stageLabel(0), '綜合適任考核');
   assert.match(stageLabel(7), /退換貨/);
-  assert.throws(() => stageLabel(10));
+  assert.equal(stageLabel(10), '試用期考核');
+  assert.equal(stageLabel(11), '半年考核');
+  assert.throws(() => stageLabel(12));
   assert.throws(() => stageLabel(-1));
 });
 
@@ -56,4 +58,21 @@ test('fmtDate formats valid dates and tolerates empty or invalid input', () => {
 
 test('NO_WRONG message says there is nothing to practice', () => {
   assert.match(errorMessage('NO_WRONG'), /沒有可重練/);
+});
+
+test('stageShort gives compact column headers for every level', () => {
+  assert.equal(stageShort(0), '綜合');
+  assert.equal(stageShort(7), '第 7 章');
+  assert.equal(stageShort(10), '試用期');
+  assert.equal(stageShort(11), '半年');
+});
+
+test('dueStatus reports passed, missing hire date, overdue, soon and ok', () => {
+  const today = new Date('2026-11-16T12:00:00');
+  assert.deepEqual(dueStatus('2026-01-01', true, today), { label: '已通過', level: 'ok' });
+  assert.deepEqual(dueStatus(null, false, today), { label: '未設定到職日', level: 'none' });
+  assert.deepEqual(dueStatus('2026-11-06', false, today), { label: '已逾期 10 天（2026-11-06）', level: 'overdue' });
+  assert.deepEqual(dueStatus('2026-11-26', false, today), { label: '剩 10 天（2026-11-26）', level: 'soon' });
+  assert.deepEqual(dueStatus('2027-03-01', false, today), { label: '期限 2027-03-01', level: 'ok' });
+  assert.deepEqual(dueStatus('2026-11-16', false, today), { label: '今天到期（2026-11-16）', level: 'soon' });
 });

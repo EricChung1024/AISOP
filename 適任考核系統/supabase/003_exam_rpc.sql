@@ -43,7 +43,7 @@ end $$;
 create function _finalize_attempt(p_attempt uuid) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  mcq_total int; mcq_right int; short_total int; short_pts numeric; v_score numeric; v_passed boolean;
+  mcq_total int; mcq_right int; short_total int; short_pts numeric; v_score numeric; v_passed boolean; v_pass numeric;
 begin
   select count(*) filter (where q.qtype <> 'short'),
          count(*) filter (where q.qtype <> 'short' and aa.is_correct),
@@ -59,32 +59,40 @@ begin
     when short_total > 0 then 100 * short_pts / short_total
     else 0 end;
   v_score := round(v_score, 1);
-  v_passed := v_score >= 80;
+  select pass_score into v_pass from assessments where stage = (select stage from attempts where id = p_attempt);
+  v_passed := v_score >= coalesce(v_pass, 80);
   update attempts set score = v_score, passed = v_passed, status = 'done', submitted_at = coalesce(submitted_at, now()) where id = p_attempt;
   return jsonb_build_object('status', 'done', 'attempt_id', p_attempt, 'score', v_score,
-                            'passed', v_passed, 'items', _attempt_report(p_attempt));
+                            'passed', v_passed, 'pass_score', coalesce(v_pass, 80), 'items', _attempt_report(p_attempt));
 end $$;
 
 create function start_exam(p_stage int) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  v_uid uuid := auth.uid(); v_total int; v_short_max int; v_short_n int; v_choice_n int;
+  v_uid uuid := auth.uid(); cfg assessments; v_short_n int; v_choice_n int; v_red_ids text[];
   v_ids text[]; q questions; perm int[]; v_qids jsonb := '[]'::jsonb; v_client jsonb := '[]'::jsonb; v_att uuid;
 begin
   if v_uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
-  if p_stage is null or p_stage < 0 or p_stage > 9 then raise exception 'BAD_STAGE'; end if;
-  v_total := case when p_stage = 0 then 30 else 10 end;
-  v_short_max := case when p_stage = 0 then 4 else 2 end;
+  select * into cfg from assessments where stage = p_stage;
+  if not found then raise exception 'BAD_STAGE'; end if;
+  -- 章節考核：該章全部題目（含未審核舊題）；綜合類（綜合／試用期／半年）：全部已審核題
 
-  select least(v_short_max, count(*)) into v_short_n from questions
-   where qtype = 'short' and ((p_stage = 0 and reviewed) or (p_stage <> 0 and stage = p_stage));
-  v_choice_n := v_total - v_short_n;
+  select least(cfg.short_max, count(*)) into v_short_n from questions
+   where qtype = 'short' and (case when cfg.kind = 'chapter' then stage = p_stage else reviewed end);
+  v_choice_n := cfg.total_questions - v_short_n;
 
-  v_ids := array(select id from questions
-                  where qtype <> 'short' and ((p_stage = 0 and reviewed) or (p_stage <> 0 and stage = p_stage))
-                  order by random() limit v_choice_n)
-        || array(select id from questions
-                  where qtype = 'short' and ((p_stage = 0 and reviewed) or (p_stage <> 0 and stage = p_stage))
+  v_red_ids := case when cfg.red_min > 0
+    then array(select id from questions where qtype <> 'short' and reviewed and red_line
+                and (case when cfg.kind = 'chapter' then stage = p_stage else true end)
+                order by random() limit least(cfg.red_min, v_choice_n))
+    else '{}'::text[] end;
+
+  v_ids := v_red_ids
+        || array(select id from questions where qtype <> 'short' and not (id = any (v_red_ids))
+                    and (case when cfg.kind = 'chapter' then stage = p_stage else reviewed end)
+                  order by random() limit v_choice_n - coalesce(array_length(v_red_ids, 1), 0))
+        || array(select id from questions where qtype = 'short'
+                    and (case when cfg.kind = 'chapter' then stage = p_stage else reviewed end)
                   order by random() limit v_short_n);
   if coalesce(array_length(v_ids, 1), 0) = 0 then raise exception 'NO_QUESTIONS'; end if;
 

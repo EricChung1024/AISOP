@@ -17,7 +17,7 @@
 import { requireRole } from './js/guard.js';
 import { renderNav, h, showError, setBusy } from './js/ui.js';
 import { select, rpc } from './js/api.js';
-import { stageLabel, fmtDate, errorTypeCounts } from './js/format.js';
+import { stageLabel, fmtDate, errorTypeCounts, dueStatus } from './js/format.js';
 import { renderErrorBars } from './js/report.js';
 
 const me = await requireRole('supervisor');
@@ -29,12 +29,24 @@ const uid = new URLSearchParams(location.search).get('id');
 async function load() {
   setBusy(app);
   try {
-    const [prof, attempts, errs, detail] = await Promise.all([
+    const [prof, attempts, errs, detail, statusRows] = await Promise.all([
       select('profiles', { columns: 'id, name', eq: { id: uid } }),
       select('attempts', { columns: 'id, stage, score, passed, submitted_at', eq: { user_id: uid, status: 'done' }, order: ['submitted_at', 'desc'] }),
       select('v_error_counts', { columns: 'error_type, cnt', eq: { user_id: uid } }),
       rpc('get_employee_detail', { p_user: uid }),
+      select('v_assessment_status', { columns: 'hire_date, probation_due, probation_passed_at, semiannual_due', eq: { user_id: uid } }),
     ]);
+    const st = statusRows[0] || {};
+    const pDue = dueStatus(st.probation_due, !!st.probation_passed_at);
+    const sDue = dueStatus(st.semiannual_due, false);
+    const hire = h('input', { type: 'date', id: 'hire-date', value: st.hire_date || '', 'aria-label': '到職日', style: 'width:12rem' });
+    const saveHire = h('button', { class: 'btn', id: 'save-hire', onclick: async () => {
+      try {
+        await rpc('set_hire_date', { p_user: uid, p_date: hire.value || null });
+        await load();
+        msg.replaceChildren(h('p', { class: 'notice ok' }, '已儲存到職日。'));
+      } catch (e) { showError(msg, e); }
+    } }, '儲存到職日');
     if (!prof.length) { showError(app, new Error('找不到這位員工')); return; }
     document.getElementById('title').textContent = `${prof[0].name} 的考核狀況`;
 
@@ -54,6 +66,12 @@ async function load() {
     };
 
     app.replaceChildren(
+      h('h2', {}, '到職日與考核期限'),
+      h('div', { class: 'row' }, h('label', { for: 'hire-date', style: 'margin:0' }, '到職日'), hire, saveHire),
+      h('div', { class: 'formal-status' },
+        h('p', { class: `due ${pDue.level}` }, `試用期考核：${pDue.label}`),
+        h('p', { class: `due ${sDue.level}` }, `半年考核：${sDue.label}`),
+        h('p', { class: 'muted' }, `期限日期：試用期 ${st.probation_due || '—'}（到職日＋3 個月）・半年考核 ${st.semiannual_due || '—'}`)),
       h('h2', {}, '歷次成績'),
       attempts.length
         ? h('table', { class: 'attempts' },

@@ -179,3 +179,14 @@ begin
 end $$;
 revoke all on function get_employee_detail(uuid) from public, anon;
 grant execute on function get_employee_detail(uuid) to authenticated;
+
+-- 主管：設定員工到職日（用來算試用期與半年考核期限）
+create function set_hire_date(p_user uuid, p_date date) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _require_supervisor();
+  update profiles set hire_date = p_date where id = p_user and role = 'employee';
+  if not found then raise exception 'NOT_FOUND'; end if;
+end $$;
+revoke all on function set_hire_date(uuid, date) from public, anon;
+grant execute on function set_hire_date(uuid, date) to authenticated;

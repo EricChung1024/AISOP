@@ -13,8 +13,8 @@ export default async function ({ page, base, sql, shot }) {
 
   await login(page, base, 'emp1@example.com');
   await page.waitForSelector('.stage-card');
-  assert.equal(await page.locator('.stage-card').count(), 10, '首頁應有 10 張階段卡');
-  assert.equal(await page.locator('.stage-card .badge.none').count(), 10, '一開始全部未考');
+  assert.equal(await page.locator('.stage-card').count(), 12, '首頁應有 12 張卡（2 張正式考核＋10 張章節）');
+  assert.equal(await page.locator('.stage-card .badge.none').count(), 12, '一開始全部未考');
   await shot('home-empty');
 
   // ── 全對：階段 7 ──

@@ -66,6 +66,7 @@ table { width: 100%; border-collapse: collapse; background: var(--surface); }
 th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
 th { background: var(--bg); }
 .cell-ok { color: var(--ok); font-weight: bold; } .cell-bad { color: var(--bad); font-weight: bold; }
+.due.overdue { color: var(--bad); font-weight: bold; } .due.soon { color: var(--warn); font-weight: bold; } .due.ok { color: var(--ok); }
 .bar { height: 14px; background: var(--accent); border-radius: 4px; }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 600px) { main { padding: 16px 12px 48px; } }

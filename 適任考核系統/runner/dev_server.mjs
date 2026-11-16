@@ -26,7 +26,11 @@ function lit(v, key) {
 }
 function fixNumeric(res) {
   const nums = res.fields.filter((f) => f.dataTypeID === 1700).map((f) => f.name);
-  if (nums.length) for (const r of res.rows) for (const n of nums) if (r[n] != null) r[n] = Number(r[n]);
+  const dates = res.fields.filter((f) => f.dataTypeID === 1082).map((f) => f.name);
+  for (const r of res.rows) {
+    for (const n of nums) if (r[n] != null) r[n] = Number(r[n]);
+    for (const n of dates) if (r[n] != null) r[n] = new Date(r[n]).toISOString().slice(0, 10);
+  }
   return res.rows;
 }
 
