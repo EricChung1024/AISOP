@@ -2,3 +2,4 @@
 適任考核系統/tools/out/
 適任考核系統/supabase/seed.sql
 __pycache__/
+適任考核系統/runner/node_modules/
