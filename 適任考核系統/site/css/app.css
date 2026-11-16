@@ -69,3 +69,5 @@ th { background: var(--bg); }
 .bar { height: 14px; background: var(--accent); border-radius: 4px; }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 600px) { main { padding: 16px 12px 48px; } }
+
+.row select { width: auto; max-width: 100%; }

@@ -51,7 +51,7 @@ begin
   for q in select qs.* from questions qs join wrong_book w on w.question_id = qs.id
             where w.user_id = v_uid and w.status = 'open' and qs.qtype <> 'short'
             order by random() limit greatest(coalesce(p_limit, 10), 1) loop
-    perm := case when q.qtype = 'mcq'
+    perm := case when q.qtype = 'mcq' and q.shuffle
                  then array(select g - 1 from generate_series(1, jsonb_array_length(q.options)) g order by random())
                  else array(select g - 1 from generate_series(1, jsonb_array_length(q.options)) g order by g) end;
     v_qids := v_qids || jsonb_build_object('id', q.id, 'perm', to_jsonb(perm));

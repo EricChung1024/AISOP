@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 COLS = ["id", "stage", "qtype", "stem", "options", "correct_index", "explanation", "error_type", "error_detail",
-        "option_errors", "reference_answer", "rubric", "key_error", "source", "source_ref", "reviewed", "red_line"]
+        "option_errors", "reference_answer", "rubric", "key_error", "source", "source_ref", "reviewed", "red_line", "shuffle"]
 JSON_COLS = {"options", "option_errors", "rubric"}
 
 
@@ -30,7 +30,8 @@ def lit(col, v):
 
 def to_sql(questions) -> str:
     out = []
-    for q in questions:
+    for raw in questions:
+        q = {"shuffle": True, **raw}
         vals = ", ".join(lit(c, q.get(c)) for c in COLS)
         sets = ", ".join(f"{c} = excluded.{c}" for c in COLS if c != "id")
         out.append(f"insert into questions ({', '.join(COLS)}) values ({vals})\n"

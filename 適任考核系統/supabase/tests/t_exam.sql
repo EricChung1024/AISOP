@@ -139,4 +139,19 @@ do $$ begin
   exception when insufficient_privilege then null; end;
 end $$;
 
+-- S9：shuffle=false 的題目（舊題的解析引用 A/B/C）選項順序永遠不變，其他題目才打亂
+do $$ declare att uuid; perm jsonb;
+begin
+  reset role;
+  insert into questions (id, stage, qtype, stem, options, correct_index, explanation, error_type, shuffle, reviewed)
+  values ('Q-ns', 6, 'mcq', 'ns', '["A 選項","B 選項","C 選項"]', 2, 'A 錯誤。B 錯誤。C 正確。', '情境判斷失誤', false, false);
+  for i in 1..20 loop
+    perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
+    att := (start_exam(6) ->> 'attempt_id')::uuid;
+    perform t_admin();
+    perm := (select e -> 'perm' from attempts a, jsonb_array_elements(a.question_ids) e where a.id = att and e ->> 'id' = 'Q-ns');
+    assert perm = '[0,1,2]'::jsonb, 'shuffle=false 不得打亂，實得 ' || perm::text;
+  end loop;
+end $$;
+
 rollback;

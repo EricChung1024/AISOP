@@ -20,7 +20,7 @@ def _base(qid, stage, qtype, stem, options, correct, explanation, error_type, so
         "id": qid, "stage": stage, "qtype": qtype, "stem": stem, "options": options,
         "correct_index": correct, "explanation": explanation, "error_type": error_type,
         "error_detail": None, "option_errors": option_errors or [None] * len(options),
-        "source": "rules", "source_ref": source_ref, "reviewed": True, "red_line": red_line,
+        "source": "rules", "source_ref": source_ref, "reviewed": True, "red_line": red_line, "shuffle": True,
     }
 
 
@@ -145,7 +145,7 @@ def _legacy(qid, topic, qtype, stem, **kw):
         "id": qid, "stage": TOPIC_TO_STAGE[topic], "qtype": qtype, "stem": stem,
         "options": None, "correct_index": None, "explanation": "", "error_type": LEGACY_ERROR,
         "error_detail": None, "option_errors": None, "source": "legacy", "source_ref": qid[2:],
-        "reviewed": False, "red_line": False,
+        "reviewed": False, "red_line": False, "shuffle": True,
     }
     q.update(kw)
     return q
@@ -159,7 +159,8 @@ def legacy_mcq(rows):
         scene = r["題目"].split("\n", 1)[1].split("\n\n")[0]
         out.append(_legacy("L-" + r["題號"], r["主題"], "mcq", scene + "\n\n以下哪一個回覆最適合？",
                            options=options, correct_index="ABC".index(r["正確答案"]),
-                           explanation=r["解析"], error_detail=r["關鍵失誤"]))
+                           explanation=r["解析"], error_detail=r["關鍵失誤"],
+                           shuffle=False))  # 解析引用 A/B/C，選項順序必須固定
     return out
 
 

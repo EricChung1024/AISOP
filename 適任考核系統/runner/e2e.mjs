@@ -13,7 +13,9 @@ const srv = await startServer();
 const base = 'http://localhost:' + srv.port;
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 let failed = 0;
-for (const f of readdirSync(path.join(here, 'e2e')).filter((f) => /^e\d+_.*\.mjs$/.test(f) && f.includes(filter)).sort()) {
+const files = readdirSync(path.join(here, 'e2e')).filter((f) => /^e\d+_.*\.mjs$/.test(f) && f.includes(filter)).sort();
+if (!files.length) { console.log('沒有符合的情境：' + filter); process.exit(1); }
+for (const f of files) {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
   const page = await ctx.newPage();
   const errors = [];

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { errorTypeCounts, stageLabel, statusOf, esc, errorMessage } from './format.js';
+import { errorTypeCounts, stageLabel, statusOf, esc, errorMessage, fmtDate } from './format.js';
 
 test('errorTypeCounts counts rows and sorts by count desc then name', () => {
   const rows = ['B', 'A', 'C', 'B', 'A', 'A'].map((error_type) => ({ error_type }));
@@ -46,4 +46,14 @@ test('errorMessage gives friendly text for known codes and falls back for unknow
   assert.match(errorMessage('NO_QUESTIONS'), /尚無題目/);
   assert.match(errorMessage('ATTEMPT_CLOSED'), /已交出|已結束/);
   assert.match(errorMessage('SOMETHING_ELSE'), /SOMETHING_ELSE/);
+});
+
+test('fmtDate formats valid dates and tolerates empty or invalid input', () => {
+  assert.equal(fmtDate(null), '—');
+  assert.equal(fmtDate('not a date'), '—');
+  assert.match(fmtDate('2026-11-16T12:00:00Z'), /^2026-11-1[67] \d\d:\d\d$/);
+});
+
+test('NO_WRONG message says there is nothing to practice', () => {
+  assert.match(errorMessage('NO_WRONG'), /沒有可重練/);
 });

@@ -74,6 +74,10 @@ class RuleQuestionsTest(unittest.TestCase):
         self.assertEqual(ids["QA-Q01"]["error_type"], "被舊資訊誤導")
         self.assertEqual(ids["QA-Q01"]["stage"], 7)
 
+    def test_rule_questions_are_shuffled(self):
+        for q in bq.rule_questions(RULES) + bq.conflict_questions(QA) + bq.tip_questions(TIPS):
+            self.assertIs(q["shuffle"], True, q["id"])
+
     def test_no_placeholder_options_anywhere(self):
         allq = (bq.rule_questions(RULES) + bq.redline_questions(RULES) + bq.conflict_questions(QA)
                 + bq.rumor_questions(RUMOR) + bq.tip_questions(TIPS))

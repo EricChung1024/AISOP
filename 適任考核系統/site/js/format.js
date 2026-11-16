@@ -40,7 +40,7 @@ export function esc(s) {
 
 const MESSAGES = {
   NO_QUESTIONS: '此階段尚無題目。',
-  NO_WRONG: '目前沒有未掌握的錯題。',
+  NO_WRONG: '目前沒有可重練的錯題（情境簡答題請對照參考答案自行複習）。',
   ATTEMPT_CLOSED: '此份考卷已交出或已結束，無法再次提交。',
   NOT_AUTHENTICATED: '請先登入。',
   FORBIDDEN: '你沒有權限執行這個操作。',
@@ -52,4 +52,12 @@ const MESSAGES = {
 
 export function errorMessage(code) {
   return MESSAGES[code] || `發生錯誤（${code}）`;
+}
+
+/** ISO 時間 → 本地 "YYYY-MM-DD HH:mm"；無效或空值回 "—"。 */
+export function fmtDate(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return '—';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }

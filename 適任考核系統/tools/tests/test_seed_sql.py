@@ -30,6 +30,12 @@ class SeedSqlTest(unittest.TestCase):
         self.assertIn("null", sql)
         self.assertIn("true", sql)
 
+    def test_shuffle_defaults_to_true_and_respects_false(self):
+        default = g.to_sql([q()]).split("values")[1].split("on conflict")[0]
+        fixed = g.to_sql([q(shuffle=False)]).split("values")[1].split("on conflict")[0]
+        self.assertEqual(fixed.count("false"), default.count("false") + 1)
+        self.assertIn("shuffle = excluded.shuffle", g.to_sql([q()]))
+
     def test_idempotent_on_conflict(self):
         self.assertIn("on conflict (id) do update", g.to_sql([q()]))
 

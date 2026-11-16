@@ -22,7 +22,8 @@ create table questions (
   source text not null default 'rules',
   source_ref text,
   reviewed boolean not null default false,
-  red_line boolean not null default false
+  red_line boolean not null default false,
+  shuffle boolean not null default true   -- false：選項順序固定（舊題的解析引用 A/B/C）
 );
 
 create table attempts (

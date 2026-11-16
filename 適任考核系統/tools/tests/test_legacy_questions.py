@@ -51,6 +51,12 @@ class LegacyTest(unittest.TestCase):
         s = {q["id"]: q for q in qs}["L-L004"]
         self.assertEqual(s["rubric"], ["按核身流程請對方提供必要資料"])
 
+    def test_legacy_mcq_is_not_shuffled_because_explanations_cite_letters(self):
+        for q in bq.legacy_mcq(MCQ):
+            self.assertIs(q["shuffle"], False, q["id"])
+        for q in bq.legacy_short(SHORT, MULTI):
+            self.assertIs(q["shuffle"], True, q["id"])
+
     def test_all_topics_mapped(self):
         topics = {r["主題"] for r in MCQ + SHORT + MULTI}
         self.assertEqual(len(topics), 20)

@@ -89,9 +89,9 @@ begin
   if coalesce(array_length(v_ids, 1), 0) = 0 then raise exception 'NO_QUESTIONS'; end if;
 
   for q in select * from questions where id = any (v_ids) order by random() loop
-    if q.qtype = 'mcq' then
+    if q.qtype = 'mcq' and q.shuffle then
       perm := array(select g - 1 from generate_series(1, jsonb_array_length(q.options)) g order by random());
-    elsif q.qtype = 'tf' then
+    elsif q.qtype in ('mcq', 'tf') then
       perm := array(select g - 1 from generate_series(1, jsonb_array_length(q.options)) g order by g);
     else
       perm := null;
