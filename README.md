@@ -6,7 +6,6 @@
 
 客服新人「適任評估考核」網站：員工考試、看成績與錯題檢討，主管看全員成績與考核期限。
 
-- 網站：https://ericchung1024.github.io/AISOP-exam/
 - 完整說明（功能、Supabase 設定、帳號、題庫匯入、測試、部署）：[適任考核系統/README.md](適任考核系統/README.md)
 
 ## 目錄
