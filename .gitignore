@@ -1,0 +1,4 @@
+.superpowers/
+適任考核系統/tools/out/
+適任考核系統/supabase/seed.sql
+__pycache__/
