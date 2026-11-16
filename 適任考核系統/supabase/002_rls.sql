@@ -4,7 +4,7 @@ alter table questions enable row level security;
 alter table attempts enable row level security;
 alter table attempt_answers enable row level security;
 alter table wrong_book enable row level security;
-alter table assessments enable row level security;   -- 設定表：用戶端不可直接讀寫
+alter table assessments enable row level security;   -- 設定表：登入者唯讀（內容非機密），不可寫
 
 create function is_supervisor() returns boolean
 language sql stable security definer set search_path = public as $$
@@ -36,8 +36,9 @@ from attempt_answers aa join attempts a on a.id = aa.attempt_id
 where aa.error_type is not null
 group by aa.error_type, a.user_id;
 
--- 分級設定的唯讀公開面（名稱、題數、及格分、週期）；設定表本身不開放。view 以擁有者身分執行，所以不受設定表 RLS 影響。
-create view v_assessments as
+-- 分級設定（名稱、題數、及格分、週期）：登入者唯讀。view 用呼叫者權限，所以靠下面這條政策放行。
+create policy assessments_read on assessments for select to authenticated using (true);
+create view v_assessments with (security_invoker = true) as
 select stage, name, kind, total_questions, pass_score, interval_months from assessments;
 
 -- 考核期限：試用期＝到職日＋3 個月；半年考核＝（上次通過半年考核／通過試用期／到職日）＋6 個月
@@ -56,6 +57,6 @@ where p.role = 'employee';
 
 -- 用戶端權限：預設全收回，只開放 select（匿名什麼都不給）。
 revoke all on all tables in schema public from anon, authenticated;
-grant select on profiles, attempts, attempt_answers, wrong_book, v_stage_summary, v_error_counts, v_assessment_status, v_assessments to authenticated;
+grant select on profiles, attempts, attempt_answers, wrong_book, v_stage_summary, v_error_counts, v_assessment_status, v_assessments, assessments to authenticated;
 revoke execute on function handle_new_user() from public, anon, authenticated;
 grant execute on function is_supervisor() to authenticated;

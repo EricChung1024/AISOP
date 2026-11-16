@@ -16,5 +16,5 @@ def build(sup_dir: str) -> str:
 
 if __name__ == "__main__":
     sup = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "supabase"
-    (sup / "setup.sql").write_text(build(str(sup)), encoding="utf-8")
+    (sup / "setup.sql").write_text(build(str(sup)), encoding="utf-8", newline="\n")
     print("wrote", sup / "setup.sql")

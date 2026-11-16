@@ -41,7 +41,7 @@ def to_sql(questions) -> str:
 
 def main(json_path, sql_path) -> int:
     qs = json.loads(Path(json_path).read_text(encoding="utf-8"))
-    Path(sql_path).write_text("-- 自動產生，含標準答案，勿提交勿部署\n" + to_sql(qs), encoding="utf-8")
+    Path(sql_path).write_text("-- 自動產生，含標準答案，勿提交勿部署\n" + to_sql(qs), encoding="utf-8", newline="\n")
     return len(qs)
 
 

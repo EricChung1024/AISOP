@@ -87,6 +87,21 @@ class RuleQuestionsTest(unittest.TestCase):
                 self.assertGreaterEqual(len(body), 2, (q["id"], opt))
                 self.assertNotIn(body, {"—", "-", "無", "無。"}, (q["id"], opt))
 
+    def test_no_editorial_annotations_leak_into_stems_or_options(self):
+        # 總表舊版欄位帶有〔…〕編輯註記（例：〔與法規不符〕），會直接洩漏哪個選項是錯的
+        allq = (bq.rule_questions(RULES) + bq.redline_questions(RULES) + bq.conflict_questions(QA)
+                + bq.rumor_questions(RUMOR) + bq.tip_questions(TIPS))
+        for q in allq:
+            self.assertNotIn("〔", q["stem"], q["id"])
+            for opt in q["options"]:
+                self.assertNotIn("〔", opt, (q["id"], opt))
+                self.assertNotIn("〕", opt, (q["id"], opt))
+
+    def test_cleaning_keeps_options_distinct_and_nonempty(self):
+        for q in bq.rule_questions(RULES) + bq.redline_questions(RULES):
+            self.assertEqual(len(set(q["options"])), len(q["options"]), q["id"])
+            self.assertTrue(all(o.strip() for o in q["options"]), q["id"])
+
     def test_rumor_is_tf_and_answer_not_adoptable(self):
         qs = bq.rumor_questions(RUMOR)
         self.assertEqual(len(qs), 2)

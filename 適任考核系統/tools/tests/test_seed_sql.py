@@ -49,6 +49,15 @@ class SeedSqlTest(unittest.TestCase):
         self.assertIn('["點一"]', sql)
         self.assertIn("::jsonb", sql)
 
+    def test_written_file_keeps_newlines_inside_strings_as_lf(self):
+        # Windows 上 write_text 會把題幹裡的換行變成 CR+LF，匯入資料庫後題幹就帶 CR
+        import json, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = Path(d) / "q.json", Path(d) / "seed.sql"
+            src.write_text(json.dumps([q(stem="第一行\n第二行")], ensure_ascii=False), encoding="utf-8")
+            g.main(str(src), str(dst))
+            self.assertNotIn(b"\r", dst.read_bytes())
+
     def test_main_writes_file(self):
         import json, tempfile
         with tempfile.TemporaryDirectory() as d:

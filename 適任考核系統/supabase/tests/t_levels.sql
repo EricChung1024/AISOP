@@ -46,14 +46,19 @@ do $$ begin
   exception when check_violation then null; end;
 end $$;
 
--- L1b：用戶端只能透過唯讀 view 看到分級設定，不能直接讀設定表
+-- L1b：登入者可唯讀分級設定（view 與設定表皆可讀，內容非機密），但不能改；匿名什麼都看不到
 do $$ begin
   perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
   assert (select pass_score from v_assessments where stage = 11) = 85, 'view 可讀及格分';
   assert (select name from v_assessments where stage = 10) = '試用期考核', 'view 可讀名稱';
-  begin perform count(*) from assessments; raise exception 'NO_RAISE';
+  assert (select count(*) from assessments) = 12, '登入者可唯讀設定表';
+  begin update assessments set pass_score = 0; raise exception 'NO_RAISE';
   exception when insufficient_privilege then null; end;
   perform t_admin();
+  set local role anon;
+  begin perform count(*) from v_assessments; raise exception 'NO_RAISE';
+  exception when insufficient_privilege then null; end;
+  reset role;
 end $$;
 
 -- L2：試用期 30 題、半年 40 題；只抽已審核；紅線題保底

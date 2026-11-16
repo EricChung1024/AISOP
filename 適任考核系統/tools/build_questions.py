@@ -9,6 +9,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I 不含腳�
 OLD_COLS = ["2022 手冊", "2023 簡報", "2024 檢核表", "2025 小抄"]
 
 
+def clean(text: str) -> str:
+    """去掉總表裡的〔…〕編輯註記（例：〔與法規不符〕），否則會洩漏哪個選項是錯的。"""
+    return re.sub(r"〔[^〕]*〕", "", text or "").strip()
+
+
 def stage_of(rule_no):
     m = re.match(r"(\d+)-", rule_no)
     return int(m.group(1)) if m else None
@@ -33,9 +38,9 @@ def _shuffled(qid, options, errors):
 
 def _old_versions(rule):
     """回傳 [(欄名, 文字)]：與最新版不同、去重後的舊版寫法。"""
-    seen, out = {rule["最新版規則"]}, []
+    seen, out = {clean(rule["最新版規則"])}, []
     for col in OLD_COLS:
-        text = rule.get(col, "")
+        text = clean(rule.get(col, ""))
         if text and text not in seen:
             seen.add(text)
             out.append((col, text))
@@ -49,16 +54,17 @@ def rule_questions(rules):
             continue
         qid, no, red = "R-" + r["編號"], r["編號"], r["紅線"] == "★"
         olds = _old_versions(r)[:3]
-        expl = f"現行規定（{r['依據']}，{r['生效日']} 生效）：{r['最新版規則']}"
+        latest = clean(r["最新版規則"])
+        expl = f"現行規定（{r['依據']}，{r['生效日']} 生效）：{latest}"
         if olds:
-            options = [r["最新版規則"]] + [t for _, t in olds]
+            options = [latest] + [t for _, t in olds]
             errors = [None] + [c for c, _ in olds]
             options, errors, ci = _shuffled(qid, options, errors)
             out.append(_base(qid, stage_of(no), "mcq", f"關於「{r['主題']}」，下列哪一項是現行有效的規定？",
                              options, ci, expl, "用了舊規則", no, errors, red))
         else:
             out.append(_base(qid, stage_of(no), "tf",
-                             f"以下是「{r['主題']}」的現行規定嗎？\n「{r['最新版規則']}」",
+                             f"以下是「{r['主題']}」的現行規定嗎？\n「{latest}」",
                              ["是", "否"], 0, expl, "用了舊規則", no, None, red))
     return out
 
@@ -73,11 +79,11 @@ def redline_questions(rules):
             col, text = olds[0]
             stem = f"處理「{r['主題']}」時，若照以下做法，是否違反現行紅線規定？\n「{text}」"
             options, ci = ["違反紅線", "符合規定"], 0
-            expl = f"這是{col}的舊寫法，已被取代。現行規定：{r['最新版規則']}"
+            expl = f"這是{col}的舊寫法，已被取代。現行規定：{clean(r['最新版規則'])}"
         else:
-            stem = f"處理「{r['主題']}」時，若照以下做法，是否違反現行紅線規定？\n「{r['最新版規則']}」"
+            stem = f"處理「{r['主題']}」時，若照以下做法，是否違反現行紅線規定？\n「{clean(r['最新版規則'])}」"
             options, ci = ["違反紅線", "符合規定"], 1
-            expl = f"這就是現行規定（{r['依據']}）：{r['最新版規則']}"
+            expl = f"這就是現行規定（{r['依據']}）：{clean(r['最新版規則'])}"
         out.append(_base("RL-" + no, stage_of(no), "tf", stem, options, ci, expl, "違反紅線", no, None, True))
     return out
 
@@ -208,7 +214,7 @@ def main(out_path):
           + legacy_mcq(rd("電商客服_最佳回覆選擇題100.csv"))
           + legacy_short(rd("電商客服_生活化情境500題_含得分點.csv"), rd("電商客服_多輪追問題100.csv")))
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(out_path).write_text(json.dumps(qs, ensure_ascii=False, indent=1), encoding="utf-8")
+    Path(out_path).write_text(json.dumps(qs, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n")
     return len(qs)
 
 
