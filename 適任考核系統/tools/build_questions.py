@@ -1,6 +1,10 @@
 """由總表與舊題庫產生題庫 questions.json。"""
 import random
 import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I 不含腳本目錄
 
 OLD_COLS = ["2022 手冊", "2023 簡報", "2024 檢核表", "2025 小抄"]
 
@@ -118,3 +122,94 @@ def tip_questions(tip_rows):
                          f"遇到「{t['客人類型']}」，下列哪一種應對最適當？", options, ci,
                          f"建議做法：{t['怎麼應對']}", "應對方式不當", t["代碼"], errors))
     return out
+
+
+# ---------- 舊題庫 ----------
+TOPIC_TO_STAGE = {
+    "身分核對": 2, "訂單查詢": 2,
+    "缺貨": 3, "預購": 3,
+    "促銷": 4,
+    "取消訂單": 5, "修改訂單": 5, "付款": 5, "發票": 5,
+    "物流追蹤": 6, "超商取貨": 6, "瑕疵與缺件": 6,
+    "退貨": 7, "換貨": 7, "退款": 7,
+    "客訴": 8, "風險訂單": 8,
+    "交接與結案": 9,
+    "知識治理": 1, "跨通路": 1,
+}
+LEGACY_ERROR = "情境判斷失誤"
+
+
+def _legacy(qid, topic, qtype, stem, **kw):
+    q = {
+        "id": qid, "stage": TOPIC_TO_STAGE[topic], "qtype": qtype, "stem": stem,
+        "options": None, "correct_index": None, "explanation": "", "error_type": LEGACY_ERROR,
+        "error_detail": None, "option_errors": None, "source": "legacy", "source_ref": qid[2:],
+        "reviewed": False, "red_line": False,
+    }
+    q.update(kw)
+    return q
+
+
+def legacy_mcq(rows):
+    out = []
+    for r in rows:
+        stem, _, tail = r["題目"].partition("\n\n")
+        options = re.findall(r"^[ABC]\. (.*)$", r["題目"], re.M)
+        scene = r["題目"].split("\n", 1)[1].split("\n\n")[0]
+        out.append(_legacy("L-" + r["題號"], r["主題"], "mcq", scene + "\n\n以下哪一個回覆最適合？",
+                           options=options, correct_index="ABC".index(r["正確答案"]),
+                           explanation=r["解析"], error_detail=r["關鍵失誤"]))
+    return out
+
+
+def _rubric(score_text, reference):
+    m = re.search(r"2分：答出「(.*?)」", score_text)
+    return [m.group(1)] if m else [reference]
+
+
+def legacy_short(rows_short, rows_multi):
+    out = []
+    for r in rows_short:
+        question = r["題目"].split("\n\n")[-1]
+        out.append(_legacy("L-" + r["題號"], r["主題"], "short", f"{r['生活情境']}\n\n{question}",
+                           reference_answer=r["參考答案"], rubric=_rubric(r["得分點"], r["參考答案"]),
+                           key_error=r["關鍵失誤"], error_detail=r["關鍵失誤"],
+                           explanation=r["參考答案"]))
+    for r in rows_multi:
+        m = re.search(r"【第一輪】(.*?)\n你的回覆：「(.*?)」\n\n【第二輪】顧客接著說：「(.*?)」", r["題目"], re.S)
+        stem = (f"【第一輪】{m[1]}\n你先前的回覆：「{m[2]}」\n\n【第二輪】顧客接著說：「{m[3]}」\n"
+                "請寫出你的第二輪回覆。")
+        out.append(_legacy("L-" + r["題號"], r["主題"], "short", stem, reference_answer=r["參考答案"],
+                           rubric=[r["參考答案"]], key_error=r["關鍵失誤"], error_detail=r["關鍵失誤"],
+                           explanation=r["參考答案"]))
+    return out
+
+
+def main(out_path):
+    import csv
+    import json
+    from pathlib import Path
+    from xlsx_reader import read_sheet
+
+    root = Path(__file__).resolve().parents[2]
+    xlsx = str(root / "統整結果_標準答案總表.xlsx")
+
+    def rd(name):
+        with (root / "AI專屬客服測驗" / name).open(encoding="utf-8-sig", newline="") as f:
+            return list(csv.DictReader(f))
+
+    rules = read_sheet(xlsx, "規則總表")
+    qs = (rule_questions(rules) + redline_questions(rules)
+          + conflict_questions(read_sheet(xlsx, "新人問答測試"))
+          + rumor_questions(read_sheet(xlsx, "傳言（不採用）"))
+          + tip_questions(read_sheet(xlsx, "經驗談"))
+          + legacy_mcq(rd("電商客服_最佳回覆選擇題100.csv"))
+          + legacy_short(rd("電商客服_生活化情境500題_含得分點.csv"), rd("電商客服_多輪追問題100.csv")))
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(out_path).write_text(json.dumps(qs, ensure_ascii=False, indent=1), encoding="utf-8")
+    return len(qs)
+
+
+if __name__ == "__main__":
+    import sys
+    print(main(sys.argv[1]), "questions")
