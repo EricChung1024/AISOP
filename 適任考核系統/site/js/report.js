@@ -34,6 +34,15 @@ export function renderItem(it, index) {
       : null);
 }
 
+/** 錯誤類型長條圖；counts 為 errorTypeCounts 的結果。 */
+export function renderErrorBars(counts, emptyText = '目前沒有錯誤紀錄。') {
+  if (!counts.length) return h('p', { class: 'muted' }, emptyText);
+  const max = Math.max(1, ...counts.map((c) => c.cnt));
+  return h('div', {}, counts.map((c) => h('div', { class: 'err-row', style: 'margin:8px 0' },
+    h('div', {}, `${c.error_type}：${c.cnt} 題`),
+    h('div', { class: 'bar', style: `width:${Math.round((c.cnt / max) * 100)}%`, role: 'img', 'aria-label': `${c.cnt} 題` }))));
+}
+
 /** 報告總覽：錯誤類型彙總＋逐題。 */
 export function renderReport(items) {
   const wrongTypes = errorTypeCounts(items.filter((it) => !rightOf(it)));

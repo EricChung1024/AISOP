@@ -160,4 +160,23 @@ begin
   assert (select score from attempts where id = 'bbbbbbbb-0000-0000-0000-000000000001') = 90, '員工看到同步後的分數';
 end $$;
 
+-- R6：主管看單一員工詳情（常錯題、掌握數、簡答原文）；員工 FORBIDDEN
+do $$ declare r jsonb;
+begin
+  perform t_as('aaaaaaaa-0000-0000-0000-000000000002');
+  begin perform get_employee_detail('aaaaaaaa-0000-0000-0000-000000000001'); raise exception 'NO_RAISE';
+  exception when others then if sqlerrm <> 'FORBIDDEN' then raise; end if; end;
+  perform t_as('aaaaaaaa-0000-0000-0000-000000000003');
+  r := get_employee_detail('aaaaaaaa-0000-0000-0000-000000000001');
+  assert r -> 'wrong' -> 0 ->> 'question_id' = 'Q-b', '常錯題依 wrong_count 由大到小，Q-b 最多';
+  assert (r -> 'wrong' -> 0 ->> 'wrong_count')::int = 3, 'Q-b 答錯 3 次';
+  assert r -> 'wrong' -> 0 ->> 'stem' = 'qb', '含題幹';
+  assert (r ->> 'open_count')::int = 2 and (r ->> 'mastered_count')::int = 1, '未掌握 2、已掌握 1';
+  assert jsonb_array_length(r -> 'short_answers') = 1, '1 筆簡答作答';
+  assert r -> 'short_answers' -> 0 ->> 'text_answer' = '我的作答', '簡答原文';
+  assert (r -> 'short_answers' -> 0 ->> 'points')::numeric = 0.5, '目前得分';
+  assert (get_employee_detail('aaaaaaaa-0000-0000-0000-000000000002') -> 'wrong')::text like '%Q-c%'
+     and (get_employee_detail('aaaaaaaa-0000-0000-0000-000000000002') -> 'wrong')::text not like '%Q-b%', '乙只有自己的錯題 Q-c';
+end $$;
+
 rollback;

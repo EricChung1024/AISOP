@@ -58,7 +58,7 @@ export async function startServer(port = 0, { seed = true } = {}) {
           const u = USERS[body.email];
           return send(u && body.password === PASSWORD ? { ok: true, id: u.id } : { ok: false });
         }
-        if (url.pathname === '/__sql') return send({ data: (await serial(() => db.query(body.sql))).rows }); // 測試用管理通道
+        if (url.pathname === '/__sql') { const rs = await serial(() => db.exec(body.sql)); return send({ data: rs.length ? rs[rs.length - 1].rows : [] }); } // 測試用管理通道（可多條語句）
         if (!uid) return send({ error: 'NOT_AUTHENTICATED' });
         if (url.pathname === '/__rpc') {
           const args = Object.entries(body.args || {}).map(([k, v]) => ident(k) + ' => ' + lit(v, k)).join(', ');

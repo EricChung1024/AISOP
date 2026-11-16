@@ -154,3 +154,28 @@ revoke all on function list_wrong(int, text, text), start_practice(int), submit_
 grant execute on function list_wrong(int, text, text), start_practice(int), submit_practice(uuid, jsonb),
   set_wrong_note(text, text), set_wrong_status(text, text), adjust_short_score(uuid, text, numeric),
   set_reviewed(text[], boolean), list_questions_for_review(int, boolean) to authenticated;
+
+-- 主管：單一員工詳情（常錯題前 10、未掌握／已掌握數、最近 20 筆簡答作答原文）
+create function get_employee_detail(p_user uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _require_supervisor();
+  return jsonb_build_object(
+    'wrong', (select coalesce(jsonb_agg(to_jsonb(x) order by x.wrong_count desc, x.question_id), '[]'::jsonb)
+                from (select w.question_id, q.stage, q.qtype, q.stem, q.error_type, w.wrong_count, w.status
+                        from wrong_book w join questions q on q.id = w.question_id
+                       where w.user_id = p_user
+                       order by w.wrong_count desc, w.question_id limit 10) x),
+    'open_count', (select count(*) from wrong_book where user_id = p_user and status = 'open'),
+    'mastered_count', (select count(*) from wrong_book where user_id = p_user and status = 'mastered'),
+    'short_answers', (select coalesce(jsonb_agg(to_jsonb(y) order by y.submitted_at desc), '[]'::jsonb)
+                        from (select aa.attempt_id, aa.question_id, q.stem, q.reference_answer, q.rubric,
+                                     aa.text_answer, aa.checked, aa.points, a.submitted_at
+                                from attempt_answers aa
+                                join attempts a on a.id = aa.attempt_id
+                                join questions q on q.id = aa.question_id
+                               where a.user_id = p_user and a.status = 'done' and q.qtype = 'short'
+                               order by a.submitted_at desc limit 20) y));
+end $$;
+revoke all on function get_employee_detail(uuid) from public, anon;
+grant execute on function get_employee_detail(uuid) to authenticated;

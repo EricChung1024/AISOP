@@ -12,6 +12,10 @@ export const STAGE_NAMES = {
   9: '第 9 章 工單與結案',
 };
 
+export function stageShort(stage) {
+  return stage === 0 ? '綜合' : `第 ${stage} 章`;
+}
+
 export function stageLabel(stage) {
   if (!Number.isInteger(stage) || !(stage in STAGE_NAMES)) throw new RangeError(`未知階段：${stage}`);
   return STAGE_NAMES[stage];

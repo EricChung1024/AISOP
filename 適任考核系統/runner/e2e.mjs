@@ -20,13 +20,13 @@ for (const f of files) {
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 200)));
-  const sql = async (s) => (await (await fetch(base + '/__sql', { method: 'POST', body: JSON.stringify({ sql: s }) })).json()).data;
+  const sql = async (s) => { const j = await (await fetch(base + '/__sql', { method: 'POST', body: JSON.stringify({ sql: s }) })).json(); if (j.error) throw new Error('SQL 失敗：' + j.error + ' ← ' + s.slice(0, 80)); return j.data; };
   try {
     const mod = await import(pathToFileURL(path.join(here, 'e2e', f)).href);
     await mod.default({ page, base, sql, ctx, browser, shot: (n) => page.screenshot({ path: path.join(here, 'shots', n + '.png'), fullPage: true }) });
     if (errors.length) throw new Error('頁面錯誤：' + errors.join(' | '));
     console.log('PASS', f);
-  } catch (e) { failed++; console.log('FAIL', f, '-', String(e.message).split('\n')[0].slice(0, 300)); }
+  } catch (e) { failed++; console.log('FAIL', f, '-', String(e.message).split('\n').join(' ').slice(0, 500)); }
   await ctx.close();
 }
 await browser.close();
