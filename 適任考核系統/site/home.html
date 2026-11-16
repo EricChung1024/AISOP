@@ -13,9 +13,30 @@
 </main>
 <script type="module">
 import { requireRole } from './js/guard.js';
-import { renderNav } from './js/ui.js';
+import { renderNav, h, showError, setBusy } from './js/ui.js';
+import { select } from './js/api.js';
+import { stageLabel, statusOf } from './js/format.js';
+
 const me = await requireRole('employee');
 renderNav(me, 'home.html');
+const app = document.getElementById('app');
+setBusy(app);
+try {
+  const rows = await select('v_stage_summary', { columns: 'stage, best_score, attempts, passed' });
+  const by = new Map(rows.map((r) => [r.stage, r]));
+  const card = (stage) => {
+    const s = by.get(stage);
+    const cls = !s ? 'none' : s.passed ? 'ok' : 'bad';
+    return h('div', { class: 'card stage-card', 'data-stage': stage },
+      h('h2', { style: 'margin-top:0' }, stageLabel(stage)),
+      h('p', {}, h('span', { class: `badge ${cls}` }, statusOf(s))),
+      h('p', { class: 'muted' }, s ? `最高 ${s.best_score} 分・已考 ${s.attempts} 次` : '尚未考過'),
+      h('a', { class: 'btn', href: `exam.html?stage=${stage}` }, s ? '再考一次' : '開始考試'));
+  };
+  app.replaceChildren(
+    h('p', { class: 'muted' }, '每個階段都可以重考，及格分數 80 分。'),
+    h('div', { class: 'grid' }, [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(card)));
+} catch (e) { showError(app, e); }
 </script>
 </body>
 </html>

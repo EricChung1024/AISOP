@@ -74,6 +74,15 @@ class RuleQuestionsTest(unittest.TestCase):
         self.assertEqual(ids["QA-Q01"]["error_type"], "被舊資訊誤導")
         self.assertEqual(ids["QA-Q01"]["stage"], 7)
 
+    def test_no_placeholder_options_anywhere(self):
+        allq = (bq.rule_questions(RULES) + bq.redline_questions(RULES) + bq.conflict_questions(QA)
+                + bq.rumor_questions(RUMOR) + bq.tip_questions(TIPS))
+        for q in [x for x in allq if x["qtype"] == "mcq"]:
+            for opt in q["options"]:
+                body = opt.split("：", 1)[-1].strip()
+                self.assertGreaterEqual(len(body), 2, (q["id"], opt))
+                self.assertNotIn(body, {"—", "-", "無", "無。"}, (q["id"], opt))
+
     def test_rumor_is_tf_and_answer_not_adoptable(self):
         qs = bq.rumor_questions(RUMOR)
         self.assertEqual(len(qs), 2)

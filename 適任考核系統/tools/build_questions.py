@@ -85,8 +85,9 @@ def redline_questions(rules):
 def conflict_questions(qa_rows):
     out = []
     for q in qa_rows:
-        if "請問資深" in q["判斷"] or not q["再翻舊版"] or q["再翻舊版"].startswith("無"):
-            continue
+        old_text = q["再翻舊版"].strip()
+        if "請問資深" in q["判斷"] or len(old_text) < 3 or old_text.startswith("無"):
+            continue  # 沒有可對照的舊版（空白、「—」、「無」）就不成衝突題
         m = re.search(r"SOP (\d+-\d+)", q["先查最新版"])
         if not m:
             continue
