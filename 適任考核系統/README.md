@@ -19,15 +19,23 @@
 4. **網址設定**：Authentication → URL Configuration → Site URL 填 GitHub Pages 網址。
 5. **網站連線設定**：`site/js/config.js` 已填入專案網址與 publishable key（這把 key 設計上就是公開的）。
 
-## 二、建立帳號
+## 二、帳號
 
+**第一位主管**要在後台建立（之後的員工都由主管在網站上新增）：
 - Authentication → Users → **Add user**：填信箱與密碼，勾「Auto Confirm User」，User Metadata 填 `{"name": "王小明"}`（顯示姓名）。
 - 新帳號預設是**員工**。設為**主管**（在 SQL Editor 執行）：
   ```sql
   update profiles set role = 'supervisor'
    where id = (select id from auth.users where email = 'boss@example.com');
   ```
+- **新增員工**：主管登入 →「主管後台 → 新增員工」，貼上名單（每行 `姓名,信箱`，也可直接從 Excel 貼兩欄），系統建立帳號並產生 12 碼初始密碼。密碼**只顯示一次**，請立刻複製或下載 CSV 交給員工。
+- **重設密碼**：「員工詳情」頁 → 重設密碼（只能重設員工，不能重設主管）。
 - **到職日**：主管登入後，在「員工詳情」頁設定（用來算試用期與半年考核期限）。
+- **務必關閉自行註冊**：Authentication → Sign In / Providers → 關閉「Allow new users to sign up」。網站沒有註冊頁，但 Supabase 的註冊介面預設是公開的，不關閉的話陌生人可以自己建帳號進來抽題。
+
+### 新增員工的後端函式
+
+建立帳號需要管理者金鑰，**不能放在網站裡**，所以放在 Supabase Edge Function `create-employees`（原始碼：`supabase/functions/create-employees/`）。流程：驗證呼叫者的登入權杖 → 確認是主管 → 才動用管理者金鑰（只存在函式環境變數）。更新函式：`supabase functions deploy create-employees`。純邏輯可用 `node --test "supabase/functions/create-employees/*.test.js"` 測試。
 
 ## 三、考核分級與調整
 
@@ -69,7 +77,7 @@ python -X utf8 -I 適任考核系統/tools/check_site_safe.py 適任考核系統
 | `node --test "適任考核系統/site/js/*.test.js"` | 前端純函式 |
 | `node 適任考核系統/runner/e2e.mjs` | 真實 Chrome 端對端（含員工／主管流程） |
 
-端對端與 SQL 測試跑在本機的 Postgres（pglite）與模擬後端上；**正式環境仍要依下列清單驗收一次**。
+`runner/` 底下的 SQL 測試與端對端測試跑在**本機**的 Postgres（pglite）與模擬後端上，只是開發用的回歸測試工具，**不會部署**、也不影響網站使用的真實 Supabase。正式環境請依下列清單驗收。
 
 ## 八、正式環境驗收清單
 
@@ -79,3 +87,5 @@ python -X utf8 -I 適任考核系統/tools/check_site_safe.py 適任考核系統
 4. 員工用開發者工具呼叫 `set_reviewed` → 回 `FORBIDDEN`；員工直接讀 `questions` 表 → 被拒絕。
 5. 主管設到職日 → 員工首頁顯示試用期／半年期限。
 6. 員工乙看不到員工甲的成績與錯題。
+7. 主管「新增員工」貼 2 筆名單 → 顯示 2 組密碼；用其中一組登入，確認是員工身分；用員工身分呼叫該函式回 `FORBIDDEN`。
+8. 主管在員工詳情「重設密碼」→ 舊密碼失效、新密碼可登入。

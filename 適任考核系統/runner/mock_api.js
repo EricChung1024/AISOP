@@ -23,3 +23,4 @@ export async function getMe() {
 }
 export const rpc = (name, args = {}) => call('/__rpc', { name, args });
 export const select = (table, opts = {}) => call('/__select', { table, opts });
+export const callFn = (name, body = {}) => call('/__fn/' + name, body);

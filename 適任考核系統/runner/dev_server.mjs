@@ -4,6 +4,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createAll, generatePassword } from '../supabase/functions/create-employees/logic.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sup = path.join(here, '..', 'supabase');
@@ -44,6 +45,8 @@ export async function startServer(port = 0, { seed = true } = {}) {
   }
   await db.exec("update profiles set role = 'supervisor' where id = '" + USERS['boss@example.com'].id + "'");
 
+  // 帳號簿：模擬 Supabase Auth（含主管用 Edge Function 新增的員工）
+  const accounts = new Map(Object.entries(USERS).map(([email, u]) => [email, { id: u.id, name: u.name, password: PASSWORD }]));
   const asUser = (id, fn) => db.transaction(async (tx) => {
     await tx.exec('select set_config(\'request.jwt.claims\', ' + q(JSON.stringify({ sub: id, role: 'authenticated' })) + ', true); set local role authenticated');
     return fn(tx);
@@ -59,11 +62,34 @@ export async function startServer(port = 0, { seed = true } = {}) {
       const uid = req.headers['x-user'];
       try {
         if (url.pathname === '/__login') {
-          const u = USERS[body.email];
-          return send(u && body.password === PASSWORD ? { ok: true, id: u.id } : { ok: false });
+          const a = accounts.get(String(body.email || '').toLowerCase());
+          return send(a && body.password === a.password ? { ok: true, id: a.id } : { ok: false });
         }
         if (url.pathname === '/__sql') { const rs = await serial(() => db.exec(body.sql)); return send({ data: rs.length ? rs[rs.length - 1].rows : [] }); } // 測試用管理通道（可多條語句）
         if (!uid) return send({ error: 'NOT_AUTHENTICATED' });
+        if (url.pathname === '/__fn/create-employees') {   // 與真正的 Edge Function 共用 logic.js
+          const me = (await serial(() => db.query('select role from profiles where id = $1', [uid]))).rows[0];
+          if (me?.role !== 'supervisor') return send({ error: 'FORBIDDEN' });
+          if (body.action === 'create') {
+            const out = await createAll(body.users, async ({ email, name, password }) => {
+              if (accounts.has(email)) return { error: { message: 'A user with this email address has already been registered' } };
+              const id = crypto.randomUUID();
+              await serial(() => db.query('insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)', [id, email, JSON.stringify({ name })]));
+              accounts.set(email, { id, name, password });
+              return {};
+            });
+            return out.fatal ? send({ error: out.fatal }) : send({ data: { results: out.results } });
+          }
+          if (body.action === 'reset_password') {
+            const entry = [...accounts.values()].find((a) => a.id === body.user_id);
+            const t = (await serial(() => db.query('select role from profiles where id = $1', [String(body.user_id)]))).rows[0];
+            if (!t || !entry) return send({ error: 'NOT_FOUND' });
+            if (t.role !== 'employee') return send({ error: 'NOT_EMPLOYEE' });
+            entry.password = generatePassword();
+            return send({ data: { ok: true, password: entry.password } });
+          }
+          return send({ error: 'BAD_REQUEST' });
+        }
         if (url.pathname === '/__rpc') {
           const args = Object.entries(body.args || {}).map(([k, v]) => ident(k) + ' => ' + lit(v, k)).join(', ');
           const r = await serial(() => asUser(uid, (tx) => tx.query('select ' + ident(body.name) + '(' + args + ') as r')));
