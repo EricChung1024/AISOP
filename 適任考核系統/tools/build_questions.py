@@ -264,12 +264,16 @@ def all_case_questions(rules, short_rows, mcq_rows, multi_rows, case_map):
 
 
 def difficulty_of(q):
-    """暫定難度（主管審核時可調整）：1 基礎、2 情境應用、3 綜合。與 supabase/005_three_stage.sql 的回填規則一致。"""
-    if q["source"] == "rules":
-        return 1
-    if q["source"] == "rules_ext":
-        return 2
-    return 3 if q["qtype"] == "short" else 2
+    """難度（1 基礎、2 情境應用、3 綜合）：逐題判斷的結果，見 judge_difficulty.py 與 data/difficulty.json。"""
+    import json
+    from pathlib import Path
+    global _DIFFICULTY
+    if _DIFFICULTY is None:
+        _DIFFICULTY = json.loads((Path(__file__).parent / "data" / "difficulty.json").read_text(encoding="utf-8"))
+    return _DIFFICULTY[q["id"]]
+
+
+_DIFFICULTY = None
 
 
 def main(out_path):
