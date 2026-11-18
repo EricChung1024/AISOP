@@ -59,6 +59,7 @@ def _stats(questions):
         "red": sum(1 for q in questions if q["red_line"]),
         "by_src": by_src,
         "by_stage": collections.Counter(q["stage"] for q in questions),
+        "by_diff": collections.Counter(q.get("difficulty") for q in questions),
     }
 
 
@@ -66,11 +67,12 @@ def readme_text(s, db):
     stages = "、".join(f"第{k}章 {v}" for k, v in sorted(s["by_stage"].items()))
     attempts = len(db.get("attempts", []))
     answers = len(db.get("attempt_answers", []))
+    diff = "、".join(f"Lv.{k}：{v} 題" for k, v in sorted(s["by_diff"].items()))
     return f"""# 評分系統資料包（交接用）
 
 > **內容含標準答案、得分點與考生作答，只在內部流通，不要放上公開網站或公開 repo。**
 
-這包資料是「適任考核系統」目前的全部內容，給接手做**評分系統**的人使用。資料全為虛構（好物集客服 SOP）。
+這包資料是「適任考核系統」目前的全部內容，給接手做**評分標準與評分系統**的人使用。資料全為虛構（好物集客服 SOP）。
 
 ## 一、先看這裡：系統現況
 
@@ -80,22 +82,44 @@ def readme_text(s, db):
 | 原始碼與文件 | repo `EricChung1024/AISOP`，資料夾 `適任考核系統/`（含設計文件、實作計畫、測試） |
 | 後端 | Supabase 專案 `{SUPABASE_REF}`（登入、資料庫、權限規則、評分函式） |
 | 新增員工 | Supabase Edge Function `create-employees`（主管專用） |
-| 資料庫快照時間 | {db.get('exported_at', '—')}（目前 {attempts} 份考卷、{answers} 筆作答，是測試資料） |
+| 資料庫快照時間 | {db.get('exported_at', '—')}（{attempts} 份考卷、{answers} 筆作答） |
+
+**已完成**：三階段考核（滿 1／3／6 個月）、題庫依難度（Lv.1／2／3）隨機抽題、選擇題自動評分、簡答自評＋主管覆核、紅線題不得抵銷、題庫審核與刪除。
+**尚未完成（交給你）**：評分標準本身（見第七節）、簡答題的評分方式、AI 自動出題（後端函式未實作）。
 
 ## 二、資料包內容
 
 | 路徑 | 說明 |
 |---|---|
-| `data/題庫_全部.csv` | 全部 {s['total']} 題，Excel 可直接開（UTF-8 含 BOM）。含正確答案、解析、得分點、錯誤類型、來源、審核狀態 |
-| `data/題庫_全部.json` | 同上，完整欄位的機器可讀版（與資料庫 `questions` 表一致） |
+| `data/題庫_全部.csv` | 全部 {s['total']} 題，Excel 可直接開（UTF-8 含 BOM）。含難度、正確答案、解析、得分點、錯誤類型、來源、審核狀態。CSV 的「階段」欄是**主題（第 1–9 章）**，不是考核階段 |
+| `data/題庫_全部.json` | 同上，完整欄位的機器可讀版（與資料庫 `questions` 表一致，含 `difficulty`） |
+| `data/難度判斷對照.csv` | 每一題的難度與判斷依據（情境複雜度、問法）。**評分標準請從這份檢查起** |
 | `data/總表/*.csv` | 「統整結果_標準答案總表」8 個工作表的原始內容（規則總表、經驗談、傳言、新人問答等）。**這是所有標準答案的最終依據** |
 | `data/案例對照_題目到總表規則.csv` | 舊題庫 100 個案例各自對應到哪條總表規則，或為何沒有對應 |
-| `data/db_snapshot.json` | 資料庫目前的資料（分級設定、使用者、考卷、作答、錯題）。使用者信箱不在其中 |
-| `schema/setup.sql` | 完整資料表、權限規則與函式（可在乾淨的 Supabase 專案重建） |
+| `data/db_snapshot.json` | 資料庫目前的資料（考卷、作答、錯題）。使用者信箱不在其中。**快照為空時代表匯出當下沒有連上資料庫，不代表沒有資料** |
+| `schema/setup.sql` | 完整資料表、權限規則與函式（001–007 合併，可在乾淨的 Supabase 專案重建） |
 
-## 三、題庫組成（請先了解品質差異）
+## 三、三階段考核與題庫分級
 
-共 **{s['total']}** 題：選擇／是非 {s['choice']} 題、情境簡答 {s['short']} 題；紅線題 {s['red']} 題。**只有 {s['reviewed']} 題已審核**。
+**章節測驗已移除**。舊階段（0–11）與歷史考卷保留唯讀（`assessments.active = false`），不能再開考。
+
+| 等級（依年資自動變更） | 考核 | 階段編號 | 題數 | 通過分 | 抽題難度 |
+|---|---|---|---|---|---|
+| Lv.1 客服實習生（到職～滿 1 個月前） | 基礎考核 | 12 | 20（全選擇） | 80 | Lv.1 |
+| Lv.2 客服助理（滿 1～3 個月前） | 情境應用考核 | 13 | 20（簡答 ≤2） | 85 | Lv.2 |
+| Lv.3 客服專員（滿 3～6 個月） | 綜合考核 | 14 | 20（簡答 ≤3） | 90 | Lv.3 |
+
+- 考核日期以到職日為準：滿 1、3、6 個月同日；當月沒有同日採月底；遇週六日順延到下一個工作日（`exam_due_date`）。國定假日沒有資料。
+- 等級在年資到期時變更，不受考核通過與否影響；未通過標示「階段認證待補強」，不降等。升等不增加退款、補償或其他操作權限。
+- 綜合考核另需**實務驗證、案例分享、主管確認**，這三項在系統外進行，系統只記錄筆試分數。
+- 紅線題答錯＝不通過，不能用其他題的高分抵銷（`red_line_failed`）。
+- 分數門檻是培訓設計，**正式上線前需用案例試評校準**。
+
+**抽題方式**（`start_exam`）：每人每次 20 題；依該階段難度隨機抽，題目盡量平均分到九個主題；該難度題數不足時由相鄰難度補，仍不足則少於 20 題並回傳 `shortage`。已刪除（`removed`）的題目不會被抽到。**已審核與未審核的題目都會被抽**，目前的作法是邊考邊審：新人考完後由資深成員審核該份考卷的題目。
+
+## 四、題庫組成（請先了解品質差異）
+
+共 **{s['total']}** 題：選擇／是非 {s['choice']} 題、情境簡答 {s['short']} 題；紅線題 {s['red']} 題。**只有 {s['reviewed']} 題已審核**。難度分布：{diff}。
 
 | 來源（`source`） | 題數 | 說明 | 審核 |
 |---|---|---|---|
@@ -103,14 +127,18 @@ def readme_text(s, db):
 | `rules_ext` 總表延伸 | {s['ext']} | 舊題庫的情境，**答案與得分點改依總表規則改寫**（64 個案例 × 7 題）。改寫內容由 AI 撰寫、依總表規則為準 | **未審核**，建議人工抽查 |
 | `legacy` 舊題庫 | {s['legacy']} | 36 個案例在總表找不到對應規則，維持原本的**通用**內容（沒有具體數字或期限） | **未審核**，不建議直接拿來評分 |
 
-各章題數：{stages}。
+各章（主題）題數：{stages}。
+
+**難度是怎麼判斷的**（`tools/judge_difficulty.py`、`data/難度判斷對照.csv`）：
+- 總表規則題（85 題）逐題判斷：現行規定、紅線、傳言與新舊衝突（來源辨識）＝Lv.1；經驗談應對題依客人類型分級（情緒、補問＝Lv.2；補償、媒體客訴、大量進線＝Lv.3）。
+- 案例題（700 題）：先由人讀完 100 個情境，判斷**情境複雜度**（1 單一規則且明確；2 資料不足／條件改變／情緒；3 客訴／補償／高風險／個資／權限／跨部門），再依**問法**（查證、界線、下一步、撰寫回覆、升級求助、追問）查表得出難度。
+- 這是依三階段規格的定義做的**暫定分級，沒有經過作答資料校準，也沒有人複核**，特別是被歸為 Lv.3 的 27 個案例。
 
 提醒：
-- 綜合、試用期、半年考核只抽**已審核**題，所以目前只用 {s['reviewed']} 題；章節考核則含未審核題。
 - `legacy` 選擇題的解析寫「A 錯誤／B 正確」，所以 `shuffle = false`（選項順序固定）；其餘題目每次抽題都會打亂選項。
 - 簡答題的 `rubric`（得分點）是字串陣列：`rules_ext` 由答案以「；」切成要點；`legacy` 只有一個要點。多輪追問題（`L-D###`）的得分點是兩條：回覆重點、判斷邊界。
 
-## 四、目前的評分邏輯（`supabase/setup.sql` 的 003、004）
+## 五、目前的評分邏輯（`supabase/setup.sql` 的 003、004、005）
 
 **選擇題／是非題（自動評分）**
 - 交卷（`submit_exam`）時，伺服器把員工選的選項還原成「原始選項 index」，與 `questions.correct_index` 比對。沒作答＝答錯。
@@ -121,53 +149,53 @@ def readme_text(s, db):
 - 題分 ＝ 勾選數 ÷ 得分點數（0–1）；**空白作答一律 0 分**（不能靠勾選拿分）。
 - 主管可在員工詳情頁覆核並調整單題分數（`adjust_short_score`，0–1），整份考卷會重算。
 
-**總分與及格**
+**總分與通過**
 - `總分 = 100 × (0.8 × 選擇題答對率 + 0.2 × 簡答平均得分)`；只有一種題型時，該題型佔 100%。四捨五入到小數一位。
-- 及格分由 `assessments.pass_score` 決定：章節 80、綜合 80、試用期 80、半年 85。階段編號：1–9 章節、0 綜合、10 試用期考核、11 半年考核。
+- 通過條件：總分 ≥ `assessments.pass_score`（80／85／90）**且沒有答錯任何紅線題**（紅線簡答題要拿滿分）。
 
 **錯誤類型（`error_type`）與細節（`error_detail`）**
 - `用了舊規則`（細節＝選到的是哪一版舊文件，例：2022 手冊）、`違反紅線`、`被舊資訊誤導`、`把傳言當規定`、`應對方式不當`、`情境判斷失誤`。
 - 簡答題未得滿分時：`error_type` 取題目的錯誤類型，`error_detail` 取題目的 `key_error`（關鍵失誤）。
 
 **錯題區（`wrong_book`）**
-- 答錯（或簡答未得滿分）自動收進；重練（`start_practice`／`submit_practice`，只含選擇題）連續答對 2 次 → `mastered`；重練**不計入**成績。
+- 答錯（或簡答未得滿分）自動收進；重練（`start_practice`／`submit_practice`，只含選擇題）連續答對 2 次 → `mastered`；重練**不計入**成績；已刪除的題目不會出現在重練。
 
-## 五、資料表欄位字典
+## 六、資料表與後端函式
 
 | 表 | 重點欄位 |
 |---|---|
 | `profiles` | `id`（＝auth 使用者 id）、`name`、`role`（`employee`／`supervisor`）、`hire_date` |
-| `assessments` | `stage` 0–11、`name`、`kind`、`total_questions`、`short_max`、`pass_score`、`red_min`（紅線題保底）、`interval_months` |
-| `questions` | `id`、`stage`(1–9)、`qtype`(`mcq`/`tf`/`short`)、`stem`、`options`(jsonb)、`correct_index`、`explanation`、`error_type`、`error_detail`、`option_errors`(jsonb，與選項對位，記每個干擾選項對應的舊版文件)、`reference_answer`、`rubric`(jsonb)、`key_error`、`source`、`source_ref`、`reviewed`、`red_line`、`shuffle` |
-| `attempts` | `id`、`user_id`、`stage`、`question_ids`(jsonb，題目順序與 `perm`)、`status`(`in_progress`/`pending_selfcheck`/`done`)、`score`、`passed`、`started_at`、`submitted_at` |
-| `attempt_answers` | 主鍵 (`attempt_id`,`question_id`)；`choice`(原始 index)、`text_answer`、`checked`(自評勾選的得分點 index)、`points`、`is_correct`、`error_type`、`error_detail` |
-| `wrong_book` | 主鍵 (`user_id`,`question_id`)；`wrong_count`、`streak`、`status`、`note`、`last_wrong_at` |
-| `practice_runs` | 重練的抽題紀錄（`question_ids`、`closed`） |
+| `assessments` | `stage` 0–14、`name`、`kind`、`total_questions`、`short_max`、`pass_score`、`active`（舊階段 false）、`difficulty`、`due_months` |
+| `questions` | `id`、`stage`（**主題 1–9**）、`difficulty`（1–3）、`qtype`(`mcq`/`tf`/`short`)、`stem`、`options`、`correct_index`、`explanation`、`error_type`、`error_detail`、`option_errors`、`reference_answer`、`rubric`、`key_error`、`source`、`source_ref`、`reviewed`、`red_line`、`shuffle`、`removed`／`removed_at`／`removed_by` |
+| `attempts` | `id`、`user_id`、`stage`（考核階段 12–14；舊紀錄 0–11）、`question_ids`（題目順序與 `perm`）、`status`、`score`、`passed`、`started_at`、`submitted_at` |
+| `attempt_answers` | 主鍵 (`attempt_id`,`question_id`)；`choice`、`text_answer`、`checked`、`points`、`is_correct`、`error_type`、`error_detail` |
+| `wrong_book`、`practice_runs` | 錯題區與重練抽題紀錄 |
 
-`source_ref` 的格式：`rules` ＝總表規則編號（例 `7-9`）；`rules_ext` ＝`案例編號:規則編號`（例 `C001:2-2`，多條用 `+` 連接）；`legacy` ＝舊題號。
-
-權限：所有資料表只開放登入者**讀取**自己的資料（主管讀全部）；`questions`、`practice_runs` 對用戶端完全不開放；寫入一律經過 `security definer` 函式。
-
-## 六、後端函式（RPC）一覽
+檢視：`v_exam_schedule`（每位員工三次考核日期、目前等級、各階段通過狀態）、`v_stage_summary`、`v_error_counts`、`v_assessments`。
 
 | 函式 | 誰能用 | 用途 |
 |---|---|---|
-| `start_exam(p_stage)` | 登入者 | 抽題並建立考卷，回傳題幹與選項（**不含答案**） |
-| `submit_exam(p_attempt, p_answers)` | 登入者 | 評選擇題；有簡答則回 `pending_selfcheck` 與參考答案、得分點 |
-| `submit_selfcheck(p_attempt, p_checks)` | 登入者 | 簡答自評，結算分數與是否及格 |
+| `start_exam(p_stage)` | 登入者 | 抽 20 題並建立考卷（**不含答案**）；階段需為 12–14 |
+| `submit_exam`、`submit_selfcheck` | 登入者 | 評選擇題；簡答自評後結算分數與是否通過 |
 | `list_wrong`、`start_practice`、`submit_practice`、`set_wrong_note`、`set_wrong_status` | 登入者 | 錯題區 |
-| `adjust_short_score`、`set_reviewed`、`list_questions_for_review`、`get_employee_detail`、`set_hire_date` | 主管 | 覆核與管理 |
+| `adjust_short_score`、`set_reviewed`、`set_hire_date`、`get_employee_detail` | 主管 | 覆核與管理 |
+| `list_questions_for_review`、`list_attempt_questions`、`remove_questions`、`restore_questions` | 主管 | 題庫審核；刪除＝不再被抽到（資料保留，暫不歸檔） |
 
-錯誤代碼（`raise exception` 的訊息）：`NOT_AUTHENTICATED`、`BAD_STAGE`、`NO_QUESTIONS`、`ATTEMPT_CLOSED`、`NO_WRONG`、`BAD_STATUS`、`BAD_POINTS`、`FORBIDDEN`、`NOT_FOUND`。
+錯誤代碼：`NOT_AUTHENTICATED`、`BAD_STAGE`（階段不存在或已停用）、`NO_QUESTIONS`、`ATTEMPT_CLOSED`、`NO_WRONG`、`BAD_STATUS`、`BAD_POINTS`、`FORBIDDEN`、`NOT_FOUND`。
 
-## 七、做評分系統時建議先處理的缺口
+權限：所有資料表只開放登入者**讀取**自己的資料（主管讀全部）；`questions`、`practice_runs` 對用戶端完全不開放；寫入一律經過 `security definer` 函式。
 
-1. **簡答題只能自評**：員工自己對照參考答案勾得分點，主管事後覆核。可考慮改為 AI 初評＋主管複評，並保存評分理由。`rubric`、`key_error`、`reference_answer` 就是為此準備的。
-2. **`rules_ext` 448 題尚未人工審核**：先抽樣檢查答案是否忠於總表，再批次標為已審核（網站「主管後台 → 題庫審核」可做）。
-3. **評分一致性**：目前沒有評分者之間的校準、題目鑑別度或難度統計；`attempt_answers` 已保存每題作答，可據此分析。
-4. **自評中途關頁的考卷**會停在 `pending_selfcheck`，不計入成績，也沒有「繼續自評」入口。
-5. **權重與及格分**（80/20、80/85 分）都是暫定值，存在 `assessments` 與 `submit_exam` 的公式裡，可依公司制度調整。
-6. 「試用期 3 個月」寫死在資料庫 view `v_assessment_status`，尚未放進設定表。
+## 七、評分標準：建議由你接手的工作
+
+1. **每個 Lv 的能力標準**：寫成可檢核的句子（例：Lv.1「能依現行規則回答，並辨識來源是否有效」）。目前的難度判斷依據寫在 `judge_difficulty.py`，不是公司的正式標準。
+2. **出題藍圖**：規定每份考卷各主題幾題、紅線題最少幾題、選擇與簡答比例。現在只做到「盡量平均分散九個主題」，沒有保證紅線題數量。
+3. **用實際作答校準**：上線前讓有經驗的人先考一輪，看每題答對率與鑑別度，檢查 Lv 分級是否合理；`attempt_answers` 已保存每題作答。
+4. **簡答題評分**：目前只有員工自評＋主管覆核，沒有評分者校準。可考慮 AI 初評＋主管複評並保存評分理由；`rubric`、`key_error`、`reference_answer` 就是為此準備的。
+5. **題目缺少「考哪個能力」的標籤**（規則理解、補問、情緒處理、權限判斷…），想分析新人弱點需要再加欄位。
+6. **`rules_ext` 448 題與 `legacy` 252 題尚未人工審核**；審核流程已在主管後台（通過／刪除／還原），可逐步完成。
+7. 綜合考核的**實務驗證、案例分享、主管確認**尚未有系統記錄。
+8. **自評中途關頁**的考卷會停在 `pending_selfcheck`，不計入成績，也沒有「繼續自評」入口。
+9. 權重與通過分（80／20、80／85／90）都是暫定值，存在 `assessments` 與 `_finalize_attempt` 的公式裡。
 
 ## 八、安全與使用規範
 
@@ -193,6 +221,13 @@ def build_package(out_dir, questions_json, xlsx_path, db_snapshot, setup_sql):
     rules = read_rows(xlsx_path, "規則總表")[1:]
     _write_csv(out / "data" / "案例對照_題目到總表規則.csv", _case_rows(bq.load_case_map(), rules),
                ["案例編號", "舊主題", "情境", "處理方式", "對應總表規則", "對應規則主題", "展開題數", "說明"])
+
+    import judge_difficulty as jd
+    drows = []
+    for q in sorted(questions, key=lambda q: (q["difficulty"], q["id"])):
+        e = jd.explain(q)
+        drows.append([q["id"], f"Lv.{q['difficulty']}", e["依據"], e["情境複雜度"], e["問法"], q["stem"].replace("\n", " ")[:80]])
+    _write_csv(out / "data" / "難度判斷對照.csv", drows, ["題號", "難度", "判斷依據", "情境複雜度", "問法", "題幹（前 80 字）"])
 
     db = json.loads(Path(db_snapshot).read_text(encoding="utf-8"))
     (out / "data" / "db_snapshot.json").write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n")

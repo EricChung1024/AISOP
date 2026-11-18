@@ -67,6 +67,22 @@ def judge(q) -> int:
     return MATRIX[k][level - 1]
 
 
+ASK_NAMES = {"A": "查證／核對資料", "B": "規則限制與界線", "C": "查證後的下一步／流程", "D": "撰寫回覆或回報",
+             "E": "何時升級、求助", "F": "選出最適合的回覆（選擇題）", "G": "追問／情緒的第二輪回覆"}
+CASE_NAMES = {1: "單一規則、情境明確", 2: "資料不足／條件改變／情緒", 3: "客訴／補償／高風險／個資／權限／跨部門"}
+
+
+def explain(q) -> dict:
+    """給交接包用：這題為什麼是這個難度。"""
+    if q["source"] == "rules":
+        if q["id"].startswith("TIP-"):
+            return {"依據": "經驗談應對題：依客人類型分級（情緒、補問＝Lv.2；補償、媒體客訴、大量進線＝Lv.3）", "情境複雜度": "", "問法": ""}
+        return {"依據": "總表規則題（現行規定、紅線、傳言、新舊衝突、來源辨識）＝基礎", "情境複雜度": "", "問法": ""}
+    n = case_no(q["id"])
+    level = 3 if n in CASE_3 else 1 if n in CASE_1 else 2
+    return {"依據": f"案例 {n}：情境複雜度 × 問法", "情境複雜度": f"{level} {CASE_NAMES[level]}", "問法": ASK_NAMES[ask_of(q["stem"])]}
+
+
 def main(questions_json, out_json):
     qs = json.loads(Path(questions_json).read_text(encoding="utf-8"))
     out = {q["id"]: judge(q) for q in qs}

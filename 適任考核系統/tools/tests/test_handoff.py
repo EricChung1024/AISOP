@@ -45,7 +45,7 @@ class BuildPackageTest(unittest.TestCase):
 
     def test_expected_files_exist(self):
         for rel in ["00_請先讀我.md", "data/題庫_全部.csv", "data/題庫_全部.json", "data/案例對照_題目到總表規則.csv",
-                    "data/db_snapshot.json", "schema/setup.sql"]:
+                    "data/難度判斷對照.csv", "data/db_snapshot.json", "schema/setup.sql"]:
             self.assertTrue((self.out / rel).is_file(), rel)
         self.assertEqual(len(list((self.out / "data" / "總表").glob("*.csv"))), 8)
 
@@ -64,6 +64,11 @@ class BuildPackageTest(unittest.TestCase):
         self.assertEqual(status.count("總表延伸"), 64)
         self.assertEqual(status.count("維持原通用內容（總表無對應規則）"), 36)
         self.assertTrue(all(r[head.index("對應總表規則")] for r in body if r[head.index("處理方式")] == "總表延伸"))
+
+    def test_difficulty_csv_covers_every_question(self):
+        rows = read_csv(self.out / "data" / "難度判斷對照.csv")
+        self.assertEqual(len(rows) - 1, 785)
+        self.assertEqual({r[1] for r in rows[1:]}, {"Lv.1", "Lv.2", "Lv.3"})
 
     def test_readme_states_the_real_numbers_and_caveats(self):
         text = (self.out / "00_請先讀我.md").read_text(encoding="utf-8")

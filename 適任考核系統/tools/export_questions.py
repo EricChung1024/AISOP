@@ -19,7 +19,7 @@ STAGE_NAMES = {
 QTYPE = {"mcq": "選擇題", "tf": "是非題", "short": "情境簡答"}
 SOURCE = {"rules": "總表規則", "rules_ext": "總表延伸（舊案例依總表改寫）", "legacy": "舊題庫（通用內容，未對應總表）"}
 LETTERS = "ABCD"
-HEADERS = ["題號", "階段", "題型", "題幹", "選項A", "選項B", "選項C", "選項D", "正確答案", "正確答案內容",
+HEADERS = ["題號", "階段", "難度", "題型", "題幹", "選項A", "選項B", "選項C", "選項D", "正確答案", "正確答案內容",
            "解析", "參考答案", "得分點", "錯誤類型", "來源", "來源編號", "審核狀態", "紅線題", "選項順序固定"]
 
 
@@ -31,7 +31,7 @@ def _row(q: dict) -> dict:
     opts = q.get("options") or []
     ci = q.get("correct_index")
     row = {
-        "題號": q["id"], "階段": stage_name(q["stage"]), "題型": QTYPE[q["qtype"]], "題幹": q["stem"],
+        "題號": q["id"], "階段": stage_name(q["stage"]), "難度": "Lv." + str(q.get("difficulty", "")), "題型": QTYPE[q["qtype"]], "題幹": q["stem"],
         "解析": q.get("explanation") or "", "參考答案": q.get("reference_answer") or "",
         "得分點": " ／ ".join(q.get("rubric") or []), "錯誤類型": q.get("error_type") or "",
         "來源": SOURCE.get(q.get("source"), q.get("source") or ""), "來源編號": q.get("source_ref") or "",
