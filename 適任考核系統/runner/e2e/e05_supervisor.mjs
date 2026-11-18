@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { login, EMP1, EMP2 } from './_helpers.mjs';
 
 export default async function ({ page, base, sql, shot }) {
+  page.on('dialog', (d) => d.accept());
   // ── 準備資料（清掉前面情境留下的紀錄） ──
   await sql('delete from attempt_answers; delete from attempts; delete from wrong_book; update questions set reviewed = false where source = \'legacy\'');
   const mcq = await sql(`select id from questions where qtype = 'mcq' and source = 'rules' order by id limit 3`);
@@ -11,10 +12,10 @@ export default async function ({ page, base, sql, shot }) {
     sql(`insert into attempts (id, user_id, stage, question_ids, status, score, passed, submitted_at)
          values ('${id}', '${uid}', ${stage}, '${JSON.stringify(qids.map((q) => ({ id: q, perm: q === shortQ.id ? null : [0, 1] })))}', 'done', ${score}, ${passed}, now())`);
   const ans = (a, q, ok, err) => sql(`insert into attempt_answers (attempt_id, question_id, is_correct, error_type) values ('${a}', '${q}', ${ok}, ${err ? `'${err}'` : 'null'})`);
-  await att(A1, EMP1, 7, 90, true, [mcq[0].id]); await ans(A1, mcq[0].id, false, '用了舊規則');
-  await att(A2, EMP2, 7, 50, false, [mcq[0].id, mcq[1].id]);
+  await att(A1, EMP1, 12, 90, true, [mcq[0].id]); await ans(A1, mcq[0].id, false, '用了舊規則');
+  await att(A2, EMP2, 12, 50, false, [mcq[0].id, mcq[1].id]);
   await ans(A2, mcq[0].id, false, '用了舊規則'); await ans(A2, mcq[1].id, false, '違反紅線');
-  await att(A3, EMP2, 2, 80, true, [mcq[2].id, shortQ.id]);
+  await att(A3, EMP2, 13, 80, true, [mcq[2].id, shortQ.id]);
   await ans(A3, mcq[2].id, true, null);
   await sql(`insert into attempt_answers (attempt_id, question_id, text_answer, checked, points, is_correct, error_type)
              values ('${A3}', '${shortQ.id}', 'abc', '[]', 0, false, '情境判斷失誤')`);
@@ -25,10 +26,10 @@ export default async function ({ page, base, sql, shot }) {
   await page.waitForSelector('table.matrix tbody tr');
   assert.equal(await page.locator('table.matrix tbody tr').count(), 2, '只列員工（不含主管）');
   const cell = (name, stage) => page.locator(`table.matrix tr:has-text("${name}") td[data-stage="${stage}"]`);
-  assert.match(await cell('員工甲', 7).textContent(), /90.*✔|✔.*90/);
-  assert.match(await cell('員工乙', 7).textContent(), /50.*✘|✘.*50/);
-  assert.match(await cell('員工乙', 2).textContent(), /80/);
-  assert.equal((await cell('員工乙', 3).textContent()).trim(), '—');
+  assert.match(await cell('員工甲', 12).textContent(), /90.*✔|✔.*90/);
+  assert.match(await cell('員工乙', 12).textContent(), /50.*✘|✘.*50/);
+  assert.match(await cell('員工乙', 13).textContent(), /80/);
+  assert.equal((await cell('員工乙', 14).textContent()).trim(), '—');
   const types = await page.locator('.err-row').allTextContents();
   assert.ok(types.some((t) => /用了舊規則：2/.test(t)), '全體錯誤類型：用了舊規則 2 題');
   assert.ok(types.some((t) => /違反紅線：1/.test(t)));
@@ -67,6 +68,23 @@ export default async function ({ page, base, sql, shot }) {
   assert.equal((await sql(`select count(*)::int c from questions where source in ('legacy', 'rules_ext') and reviewed`))[0].c, 2);
   await page.locator('table.review tbody tr').first().locator('summary').click();
   await shot('supervisor-review');
+
+  // 刪除題目：從清單消失、不再被抽到，資料保留；可在「已刪除」還原
+  const delId = await page.locator('table.review tbody tr').first().getAttribute('data-qid');
+  await page.locator('table.review tbody tr').first().locator('button.remove-one').click();
+  await page.waitForSelector(`table.review tbody tr[data-qid="${delId}"]`, { state: 'detached' });
+  assert.equal((await sql(`select removed from questions where id = '${delId}'`))[0].removed, true, '標記為已刪除');
+  assert.equal((await sql(`select count(*)::int c from questions where id = '${delId}'`))[0].c, 1, '資料仍保留（不歸檔、不刪列）');
+  await page.selectOption('#r-state', 'removed');
+  await page.waitForSelector(`table.review tbody tr[data-qid="${delId}"] button.restore-one`);
+  await page.click(`table.review tbody tr[data-qid="${delId}"] button.restore-one`);
+  await page.waitForSelector(`table.review tbody tr[data-qid="${delId}"]`, { state: 'detached' });
+  assert.equal((await sql(`select removed from questions where id = '${delId}'`))[0].removed, false, '已還原');
+
+  // 從員工詳情的考卷連結，只審核那份考卷用到的題目
+  await page.goto(base + `/supervisor.html?review=${A3}`);
+  await page.waitForSelector('table.review tbody tr');
+  assert.equal(await page.locator('table.review tbody tr').count(), 2, '這份考卷 2 題');
 
   // ── 員工不能呼叫主管 RPC ──
   await page.evaluate(() => localStorage.setItem('mock_user', 'e0000000-0000-0000-0000-000000000001'));

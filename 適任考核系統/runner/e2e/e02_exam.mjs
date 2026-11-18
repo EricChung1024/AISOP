@@ -13,16 +13,16 @@ export default async function ({ page, base, sql, shot }) {
 
   await login(page, base, 'emp1@example.com');
   await page.waitForSelector('.stage-card');
-  assert.equal(await page.locator('.stage-card').count(), 12, '首頁應有 12 張卡（2 張正式考核＋10 張章節）');
-  assert.equal(await page.locator('.stage-card .badge.none').count(), 12, '一開始全部未考');
+  assert.equal(await page.locator('.stage-card').count(), 3, '首頁應有 3 張卡（三階段考核）');
+  assert.equal(await page.locator('.stage-card .badge.none').count(), 3, '一開始全部未考');
   await shot('home-empty');
 
   // ── 全對：階段 7 ──
-  await page.click('.stage-card[data-stage="7"] a.btn');
+  await page.click('.stage-card[data-stage="12"] a.btn');
   await page.waitForSelector('.qnav');
   const att = await latestAttempt(sql, EMP1);
   const n = att.questions.length;
-  assert.equal(n, 10, '階段 7 應抽 10 題（8 選擇＋2 簡答）');
+  assert.equal(n, 20, '基礎考核每人 20 題');
   for (let i = 0; i < n; i++) {
     await page.click(`.qnav[data-i="${i}"]`);
     const q = att.questions[i];
@@ -30,11 +30,7 @@ export default async function ({ page, base, sql, shot }) {
     else await page.check(`input[data-qid="${q.id}"][value="${q.shownRight}"]`);
   }
   if (!process.env.NO_SHOT) await shot('exam');
-  await page.click('#submit');
-  await page.waitForSelector('.selfcheck');
-  for (const cb of await page.locator('.selfcheck input[type=checkbox]').all()) await cb.check();
-  await shot('selfcheck');
-  await page.click('#submit-selfcheck');
+  await page.click('#submit');   // 基礎考核全是選擇題，交卷即結算
   await page.waitForURL('**/result.html**');
   await page.waitForSelector('.score');
   assert.match(await page.textContent('.score'), /100/);
@@ -50,12 +46,12 @@ export default async function ({ page, base, sql, shot }) {
   // ── 首頁反映成績 ──
   await page.goto(base + '/home.html');
   await page.waitForSelector('.stage-card');
-  const card7 = page.locator('.stage-card[data-stage="7"]');
+  const card7 = page.locator('.stage-card[data-stage="12"]');
   assert.match(await card7.textContent(), /已通過/);
   assert.match(await card7.textContent(), /100/);
 
   // ── 有錯、有未答：再考一次階段 7 ──
-  await page.click('.stage-card[data-stage="7"] a.btn');
+  await page.click('.stage-card[data-stage="12"] a.btn');
   await page.waitForSelector('.qnav');
   const att2 = await latestAttempt(sql, EMP1);
   let wrong = 0;
@@ -69,8 +65,6 @@ export default async function ({ page, base, sql, shot }) {
   }
   assert.ok(wrong >= 4);
   await page.click('#submit'); // confirm 對話框會被自動接受
-  await page.waitForSelector('.selfcheck');
-  await page.click('#submit-selfcheck'); // 簡答沒作答也沒勾
   await page.waitForURL('**/result.html**');
   await page.waitForSelector('.score');
   const score = Number((await page.textContent('.score')).match(/[\d.]+/)[0]);
@@ -82,13 +76,16 @@ export default async function ({ page, base, sql, shot }) {
   const rows = await sql(`select count(*)::int c from wrong_book where user_id = '${EMP1}'`);
   assert.ok(rows[0].c >= 4, '錯題區應收進錯題');
 
-  // 沒有題目的階段（刪光階段 9 的題目）→ 友善訊息
-  await sql('delete from wrong_book where question_id in (select id from questions where stage = 9)');
-  await sql('delete from attempt_answers where question_id in (select id from questions where stage = 9)');
-  await sql('delete from questions where stage = 9');
-  await page.goto(base + '/exam.html?stage=9');
+  // 題庫沒有可用題目（全被刪除）→ 友善訊息
+  await sql('update questions set removed = true');
+  await page.goto(base + '/exam.html?stage=12');
   await page.waitForSelector('.notice');
-  assert.match(await page.textContent('.notice'), /尚無題目/);
+  assert.match(await page.textContent('.notice'), /尚無可用題目/);
+  // 舊的章節階段已停用
+  await sql('update questions set removed = false');
+  await page.goto(base + '/exam.html?stage=7');
+  await page.waitForSelector('.notice');
+  assert.match(await page.textContent('.notice'), /階段不正確/);
 
   assert.deepEqual(leaked, [], 'start_exam 回應不得含答案相關欄位');
 }

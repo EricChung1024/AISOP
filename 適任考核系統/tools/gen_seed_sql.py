@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 
 COLS = ["id", "stage", "qtype", "stem", "options", "correct_index", "explanation", "error_type", "error_detail",
-        "option_errors", "reference_answer", "rubric", "key_error", "source", "source_ref", "reviewed", "red_line", "shuffle"]
+        "option_errors", "reference_answer", "rubric", "key_error", "source", "source_ref", "reviewed", "red_line", "shuffle", "difficulty"]
+# 重跑種子時不覆蓋人工作業的結果：主管的審核狀態與調整過的難度。
+KEEP_ON_RESEED = {"reviewed", "difficulty"}
 JSON_COLS = {"options", "option_errors", "rubric"}
 
 
@@ -33,7 +35,7 @@ def to_sql(questions) -> str:
     for raw in questions:
         q = {"shuffle": True, **raw}
         vals = ", ".join(lit(c, q.get(c)) for c in COLS)
-        sets = ", ".join(f"{c} = excluded.{c}" for c in COLS if c != "id")
+        sets = ", ".join(f"{c} = excluded.{c}" for c in COLS if c != "id" and c not in KEEP_ON_RESEED)
         out.append(f"insert into questions ({', '.join(COLS)}) values ({vals})\n"
                    f"on conflict (id) do update set {sets};")
     return "\n".join(out) + "\n"

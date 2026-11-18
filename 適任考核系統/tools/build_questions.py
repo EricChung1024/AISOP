@@ -263,6 +263,15 @@ def all_case_questions(rules, short_rows, mcq_rows, multi_rows, case_map):
             + legacy_mcq(rest(mcq_rows)) + legacy_short(rest(short_rows), rest(multi_rows)))
 
 
+def difficulty_of(q):
+    """暫定難度（主管審核時可調整）：1 基礎、2 情境應用、3 綜合。與 supabase/005_three_stage.sql 的回填規則一致。"""
+    if q["source"] == "rules":
+        return 1
+    if q["source"] == "rules_ext":
+        return 2
+    return 3 if q["qtype"] == "short" else 2
+
+
 def main(out_path):
     import csv
     import json
@@ -283,6 +292,8 @@ def main(out_path):
           + tip_questions(read_sheet(xlsx, "經驗談"))
           + all_case_questions(rules, rd("電商客服_生活化情境500題_含得分點.csv"), rd("電商客服_最佳回覆選擇題100.csv"),
                                rd("電商客服_多輪追問題100.csv"), load_case_map()))
+    for q in qs:
+        q["difficulty"] = difficulty_of(q)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(json.dumps(qs, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n")
     return len(qs)

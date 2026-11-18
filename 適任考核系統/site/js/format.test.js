@@ -30,7 +30,9 @@ test('stageLabel names comprehensive exam and chapters', () => {
   assert.match(stageLabel(7), /退換貨/);
   assert.equal(stageLabel(10), '試用期考核');
   assert.equal(stageLabel(11), '半年考核');
-  assert.throws(() => stageLabel(12));
+  assert.equal(stageLabel(12), '基礎考核（滿 1 個月）');
+  assert.equal(stageLabel(14), '綜合考核（滿 6 個月）');
+  assert.throws(() => stageLabel(15));
   assert.throws(() => stageLabel(-1));
 });
 
@@ -45,7 +47,7 @@ test('esc escapes html special characters', () => {
 });
 
 test('errorMessage gives friendly text for known codes and falls back for unknown', () => {
-  assert.match(errorMessage('NO_QUESTIONS'), /尚無題目/);
+  assert.match(errorMessage('NO_QUESTIONS'), /尚無可用題目/);
   assert.match(errorMessage('ATTEMPT_CLOSED'), /已交出|已結束/);
   assert.match(errorMessage('SOMETHING_ELSE'), /SOMETHING_ELSE/);
 });
