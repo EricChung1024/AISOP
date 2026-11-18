@@ -84,7 +84,7 @@ def readme_text(s, db):
 | 新增員工 | Supabase Edge Function `create-employees`（主管專用） |
 | 資料庫快照時間 | {db.get('exported_at', '—')}（{attempts} 份考卷、{answers} 筆作答） |
 
-**已完成**：三階段考核（滿 1／3／6 個月）、題庫依難度（Lv.1／2／3）隨機抽題、選擇題自動評分、簡答自評＋主管覆核、紅線題不得抵銷、題庫審核與刪除。
+**已完成**：三階段考核（滿 1／3／6 個月）、題庫依難度（Lv.1／2／3）隨機抽題成草稿考卷、主管審核與鎖定後才出題、選擇題自動評分、簡答自評＋主管覆核、紅線題不得抵銷、題庫審核與刪除。
 **尚未完成（交給你）**：評分標準本身（見第七節）、簡答題的評分方式、AI 自動出題（後端函式未實作）。
 
 ## 二、資料包內容
@@ -97,7 +97,7 @@ def readme_text(s, db):
 | `data/總表/*.csv` | 「統整結果_標準答案總表」8 個工作表的原始內容（規則總表、經驗談、傳言、新人問答等）。**這是所有標準答案的最終依據** |
 | `data/案例對照_題目到總表規則.csv` | 舊題庫 100 個案例各自對應到哪條總表規則，或為何沒有對應 |
 | `data/db_snapshot.json` | 資料庫目前的資料（考卷、作答、錯題）。使用者信箱不在其中。**快照為空時代表匯出當下沒有連上資料庫，不代表沒有資料** |
-| `schema/setup.sql` | 完整資料表、權限規則與函式（001–007 合併，可在乾淨的 Supabase 專案重建） |
+| `schema/setup.sql` | 完整資料表、權限規則與函式（001–008 合併，可在乾淨的 Supabase 專案重建） |
 
 ## 三、三階段考核與題庫分級
 
@@ -115,7 +115,13 @@ def readme_text(s, db):
 - 紅線題答錯＝不通過，不能用其他題的高分抵銷（`red_line_failed`）。
 - 分數門檻是培訓設計，**正式上線前需用案例試評校準**。
 
-**抽題方式**（`start_exam`）：每人每次 20 題；依該階段難度隨機抽，題目盡量平均分到九個主題；該難度題數不足時由相鄰難度補，仍不足則少於 20 題並回傳 `shortage`。已刪除（`removed`）的題目不會被抽到。**已審核與未審核的題目都會被抽**，目前的作法是邊考邊審：新人考完後由資深成員審核該份考卷的題目。
+**出題流程**（`create_paper` → `remove_from_paper` → `refill_paper` → `lock_paper` → 員工 `start_exam`）：
+1. 主管為某員工、某階段產生**草稿考卷**：依該階段難度隨機抽 20 題，題目盡量平均分到九個主題。
+2. 主管檢查每題難易度是否合適，不合適的**刪除**（暫時抽出放一邊，不歸檔）。
+3. 按「隨機補到 20 題」補滿；被刪的題不會補回同一份考卷。
+4. 「鎖定並出題」後題目不能再改（鎖定時那 20 題標為已審核），員工才看得到（`my_papers`）並能開始考；員工沒有鎖定的考卷時 `start_exam` 回 `NO_PAPER`。
+
+**牌堆規則**：題庫像一副牌（以「難度＋題型」各一副）。抽進考卷的題目標記 `used`，這一輪不再被抽到；刪除標記 `removed`；某副牌抽完、補不滿時，該副牌全部重洗（`used`、`removed` 清除），開始新一輪；重洗後仍不足才由相鄰難度補。
 
 ## 四、題庫組成（請先了解品質差異）
 
@@ -166,22 +172,24 @@ def readme_text(s, db):
 |---|---|
 | `profiles` | `id`（＝auth 使用者 id）、`name`、`role`（`employee`／`supervisor`）、`hire_date` |
 | `assessments` | `stage` 0–14、`name`、`kind`、`total_questions`、`short_max`、`pass_score`、`active`（舊階段 false）、`difficulty`、`due_months` |
-| `questions` | `id`、`stage`（**主題 1–9**）、`difficulty`（1–3）、`qtype`(`mcq`/`tf`/`short`)、`stem`、`options`、`correct_index`、`explanation`、`error_type`、`error_detail`、`option_errors`、`reference_answer`、`rubric`、`key_error`、`source`、`source_ref`、`reviewed`、`red_line`、`shuffle`、`removed`／`removed_at`／`removed_by` |
+| `questions` | `id`、`stage`（**主題 1–9**）、`difficulty`（1–3）、`qtype`(`mcq`/`tf`/`short`)、`stem`、`options`、`correct_index`、`explanation`、`error_type`、`error_detail`、`option_errors`、`reference_answer`、`rubric`、`key_error`、`source`、`source_ref`、`reviewed`、`red_line`、`shuffle`、`removed`／`removed_at`／`removed_by`（暫時刪除）、`used`（這一輪已抽過） |
 | `attempts` | `id`、`user_id`、`stage`（考核階段 12–14；舊紀錄 0–11）、`question_ids`（題目順序與 `perm`）、`status`、`score`、`passed`、`started_at`、`submitted_at` |
 | `attempt_answers` | 主鍵 (`attempt_id`,`question_id`)；`choice`、`text_answer`、`checked`、`points`、`is_correct`、`error_type`、`error_detail` |
+| `exam_papers` | 考卷：`user_id`、`stage`、`question_ids`、`rejected_ids`（被刪掉的題）、`status`（`draft`／`locked`／`used`）、`created_by`、`locked_at`、`attempt_id`。對用戶端完全不開放 |
 | `wrong_book`、`practice_runs` | 錯題區與重練抽題紀錄 |
 
 檢視：`v_exam_schedule`（每位員工三次考核日期、目前等級、各階段通過狀態）、`v_stage_summary`、`v_error_counts`、`v_assessments`。
 
 | 函式 | 誰能用 | 用途 |
 |---|---|---|
-| `start_exam(p_stage)` | 登入者 | 抽 20 題並建立考卷（**不含答案**）；階段需為 12–14 |
+| `my_papers()` | 登入者 | 看自己有哪些已鎖定、可開始考的考卷（不含題目編號） |
+| `start_exam(p_stage)` | 登入者 | 用已鎖定的考卷建立作答（**不含答案**）；階段需為 12–14；沒有鎖定考卷回 `NO_PAPER` |
 | `submit_exam`、`submit_selfcheck` | 登入者 | 評選擇題；簡答自評後結算分數與是否通過 |
 | `list_wrong`、`start_practice`、`submit_practice`、`set_wrong_note`、`set_wrong_status` | 登入者 | 錯題區 |
 | `adjust_short_score`、`set_reviewed`、`set_hire_date`、`get_employee_detail` | 主管 | 覆核與管理 |
-| `list_questions_for_review`、`list_attempt_questions`、`remove_questions`、`restore_questions` | 主管 | 題庫審核；刪除＝不再被抽到（資料保留，暫不歸檔） |
+| `list_questions_for_review`、`list_attempt_questions`、`remove_questions`、`restore_questions` | 主管 | 題庫審核；刪除＝暫時移出牌堆（資料保留，暫不歸檔） |
 
-錯誤代碼：`NOT_AUTHENTICATED`、`BAD_STAGE`（階段不存在或已停用）、`NO_QUESTIONS`、`ATTEMPT_CLOSED`、`NO_WRONG`、`BAD_STATUS`、`BAD_POINTS`、`FORBIDDEN`、`NOT_FOUND`。
+錯誤代碼：`NOT_AUTHENTICATED`、`BAD_STAGE`（階段不存在或已停用）、`NO_QUESTIONS`、`NO_PAPER`、`PAPER_EXISTS`、`PAPER_NOT_FULL`、`PAPER_LOCKED`、`ATTEMPT_CLOSED`、`NO_WRONG`、`BAD_STATUS`、`BAD_POINTS`、`FORBIDDEN`、`NOT_FOUND`。
 
 權限：所有資料表只開放登入者**讀取**自己的資料（主管讀全部）；`questions`、`practice_runs` 對用戶端完全不開放；寫入一律經過 `security definer` 函式。
 

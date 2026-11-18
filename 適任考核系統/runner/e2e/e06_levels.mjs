@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { login, latestAttempt, EMP1 } from './_helpers.mjs';
+import { login, latestAttempt, lockPaper, EMP1 } from './_helpers.mjs';
 
 export default async function ({ page, base, sql, shot }) {
   page.on('dialog', (d) => d.accept());
   await sql(`delete from attempt_answers; delete from attempts; delete from wrong_book;
              update profiles set hire_date = current_date - 200 where id = '${EMP1}'`);
+
+  await lockPaper(sql, EMP1, 12);
 
   // ── 員工首頁：三階段考核與期限（到職約 200 天前＝滿 6 個月，等級 Lv.3） ──
   await login(page, base, 'emp1@example.com');

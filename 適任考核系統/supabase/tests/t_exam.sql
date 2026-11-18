@@ -40,17 +40,23 @@ begin
   return out;
 end $$;
 grant execute on function t_as(uuid), t_admin(), t_answers(uuid, text) to public;
-create function t_pool(ids text[]) returns void language sql security definer as $$
-  update questions set removed = not (id = any (ids)); $$;
-grant execute on function t_pool(text[]) to public;
+-- 模擬「主管已鎖定考卷」：為某員工建立指定階段、指定題目的已鎖定考卷，再以該員工身分開始考試
+create function t_start(uid uuid, st int, ids text[]) returns jsonb language plpgsql as $$
+begin
+  reset role;
+  delete from exam_papers where user_id = uid and stage = st;
+  insert into exam_papers (user_id, stage, question_ids, status, locked_at) values (uid, st, ids, 'locked', now());
+  perform t_as(uid);
+  return start_exam(st);
+end $$;
+grant execute on function t_start(uuid, int, text[]) to public;
 
 
 -- S1：答對＋簡答全勾 → 100 分；重複交卷被拒；start_exam 不含答案
 do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; r jsonb; att uuid; ans jsonb;
 begin
-  perform t_pool(array['Q-2a','Q-2b','Q-2c','S-2']);
   perform t_as(a);
-  r := start_exam(13); att := (r ->> 'attempt_id')::uuid;
+  r := t_start(a, 13, array['Q-2a','Q-2b','Q-2c','S-2']); att := (r ->> 'attempt_id')::uuid;
   assert jsonb_array_length(r -> 'questions') = 4, '階段 2 應抽 4 題';
   assert r::text not like '%correct_index%' and r::text not like '%explanation%' and r::text not like '%REF-ANSWER%'
      and r::text not like '%點一%' and r::text not like '%解 2a%', 'start_exam 不得含答案／解析／得分點';
@@ -71,10 +77,9 @@ end $$;
 -- S2：全錯＋空白簡答（即使勾選也 0 分）→ 0 分；錯題區 4 筆；再錯一次 wrong_count＝2；error_detail 取自選項
 do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; r jsonb; att uuid; ans jsonb;
 begin
-  perform t_pool(array['Q-2a','Q-2b','Q-2c','S-2']);
   reset role; delete from wrong_book;
   for i in 1..2 loop
-    perform t_as(a); att := (start_exam(13) ->> 'attempt_id')::uuid;
+    perform t_as(a); att := (t_start(a, 13, array['Q-2a','Q-2b','Q-2c','S-2']) ->> 'attempt_id')::uuid;
     perform t_admin(); ans := t_answers(att, 'wrongblank'); perform t_as(a);
     r := submit_exam(att, ans);
     r := submit_selfcheck(att, '[{"question_id":"S-2","checked":[0,1]}]');
@@ -90,8 +95,7 @@ end $$;
 -- S3：選擇全對、簡答勾 1/2 → 100×(0.8×1＋0.2×0.5)＝90
 do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; r jsonb; att uuid; ans jsonb;
 begin
-  perform t_pool(array['Q-2a','Q-2b','Q-2c','S-2']);
-  perform t_as(a); att := (start_exam(13) ->> 'attempt_id')::uuid;
+  perform t_as(a); att := (t_start(a, 13, array['Q-2a','Q-2b','Q-2c','S-2']) ->> 'attempt_id')::uuid;
   perform t_admin(); ans := t_answers(att, 'right'); perform t_as(a);
   perform submit_exam(att, ans);
   r := submit_selfcheck(att, '[{"question_id":"S-2","checked":[0]}]');
@@ -101,36 +105,27 @@ end $$;
 -- S4：無簡答的階段，一次交卷即結算；答對 1 題、1 題未答 → 50；全未答 → 0 不報錯
 do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; r jsonb; att uuid; ans jsonb;
 begin
-  perform t_pool(array['Q-5a','Q-5b']);
-  perform t_as(a); att := (start_exam(12) ->> 'attempt_id')::uuid;
+  perform t_as(a); att := (t_start(a, 12, array['Q-5a','Q-5b']) ->> 'attempt_id')::uuid;
   perform t_admin(); ans := t_answers(att, 'right'); perform t_as(a);
   r := submit_exam(att, jsonb_build_array(ans -> 0));
   assert r ->> 'status' = 'done' and (r ->> 'score')::numeric = 50, '無簡答 1/2 應 50 分';
-  att := (start_exam(12) ->> 'attempt_id')::uuid;
+  att := (t_start(a, 12, array['Q-5a','Q-5b']) ->> 'attempt_id')::uuid;
   r := submit_exam(att, '[]');
   assert (r ->> 'score')::numeric = 0 and r ->> 'status' = 'done', '全未答 0 分';
 end $$;
 
--- S5：沒有題目的階段
+-- S5：還沒出題（沒有鎖定的考卷）不能開始考試
 do $$ begin
-  perform t_pool(array[]::text[]);
   perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
   begin perform start_exam(12); raise exception 'NO_RAISE';
-  exception when others then if sqlerrm <> 'NO_QUESTIONS' then raise; end if; end;
+  exception when others then if sqlerrm <> 'NO_PAPER' then raise; end if; end;
 end $$;
 
--- S6：已刪除的題目不會被抽到；未審核題可以抽（新人考試時由資深 review）；選項打亂 20 次後答對仍判對
-do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; r jsonb; att uuid; ans jsonb;
+-- S6：選項打亂 20 次後答對仍判對
+do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid; ans jsonb;
 begin
-  reset role;
-  perform t_pool(array['Q-5a','Q-5b','M-R','M-U','Q-2a','Q-2b','Q-2c','S-2']);
-  update questions set removed = true where id = 'Q-2c';
-  perform t_as(a); r := start_exam(12);
-  assert (select count(*) from jsonb_array_elements(r -> 'questions') e where e ->> 'id' = 'Q-2c') = 0, '已刪除不得被抽到';
-  assert (select count(*) from jsonb_array_elements(r -> 'questions') e where e ->> 'id' = 'M-U') = 1, '未審核題可抽';
-  perform t_pool(array['Q-5a','Q-5b']);
   for i in 1..20 loop
-    att := (start_exam(12) ->> 'attempt_id')::uuid;
+    att := (t_start(a, 12, array['Q-5a','Q-5b']) ->> 'attempt_id')::uuid;
     perform t_admin(); ans := t_answers(att, 'right'); perform t_as(a);
     assert (submit_exam(att, ans) ->> 'score')::numeric = 100, '打亂後答對應判對';
   end loop;
@@ -139,8 +134,7 @@ end $$;
 -- S7：別人的考卷不能交
 do $$ declare att uuid;
 begin
-  perform t_pool(array['Q-5a','Q-5b']);
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000001'); att := (start_exam(12) ->> 'attempt_id')::uuid;
+  perform t_as('aaaaaaaa-0000-0000-0000-000000000001'); att := (t_start('aaaaaaaa-0000-0000-0000-000000000001', 12, array['Q-5a','Q-5b']) ->> 'attempt_id')::uuid;
   perform t_as('aaaaaaaa-0000-0000-0000-000000000002');
   begin perform submit_exam(att, '[]'); raise exception 'NO_RAISE';
   exception when others then if sqlerrm <> 'ATTEMPT_CLOSED' then raise; end if; end;
@@ -157,12 +151,11 @@ end $$;
 do $$ declare att uuid; perm jsonb;
 begin
   reset role;
-  perform t_pool(array['Q-ns']);
   insert into questions (id, stage, qtype, stem, options, correct_index, explanation, error_type, shuffle, reviewed)
   values ('Q-ns', 6, 'mcq', 'ns', '["A 選項","B 選項","C 選項"]', 2, 'A 錯誤。B 錯誤。C 正確。', '情境判斷失誤', false, false);
   for i in 1..20 loop
     perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
-    att := (start_exam(12) ->> 'attempt_id')::uuid;
+    att := (t_start('aaaaaaaa-0000-0000-0000-000000000001', 12, array['Q-ns']) ->> 'attempt_id')::uuid;
     perform t_admin();
     perm := (select e -> 'perm' from attempts a, jsonb_array_elements(a.question_ids) e where a.id = att and e ->> 'id' = 'Q-ns');
     assert perm = '[0,1,2]'::jsonb, 'shuffle=false 不得打亂，實得 ' || perm::text;
@@ -172,8 +165,7 @@ end $$;
 -- S10：簡答作答過長（貼入超大文字）只保留前 5000 字
 do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid;
 begin
-  perform t_pool(array['Q-2a','Q-2b','Q-2c','S-2']);
-  perform t_as(a); att := (start_exam(13) ->> 'attempt_id')::uuid;
+  perform t_as(a); att := (t_start(a, 13, array['Q-2a','Q-2b','Q-2c','S-2']) ->> 'attempt_id')::uuid;
   perform submit_exam(att, jsonb_build_array(jsonb_build_object('question_id', 'S-2', 'text', repeat('字', 6000))));
   perform t_admin();
   assert (select length(text_answer) from attempt_answers where attempt_id = att and question_id = 'S-2') = 5000, '簡答作答上限 5000 字';

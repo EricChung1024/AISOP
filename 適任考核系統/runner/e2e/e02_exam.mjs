@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { login, latestAttempt, EMP1 } from './_helpers.mjs';
+import { login, latestAttempt, lockPaper, EMP1 } from './_helpers.mjs';
 
 export default async function ({ page, base, sql, shot }) {
   const leaked = [];
@@ -12,6 +12,11 @@ export default async function ({ page, base, sql, shot }) {
   page.on('dialog', (d) => d.accept());
 
   await login(page, base, 'emp1@example.com');
+  await page.waitForSelector('.stage-card');
+  assert.equal(await page.locator('a.btn[href^="exam.html"]').count(), 0, '主管還沒出題，不能開始考試');
+  assert.match(await page.textContent('.not-ready'), /尚未出題/);
+  await lockPaper(sql, EMP1, 12);
+  await page.reload();
   await page.waitForSelector('.stage-card');
   assert.equal(await page.locator('.stage-card').count(), 3, '首頁應有 3 張卡（三階段考核）');
   assert.equal(await page.locator('.stage-card .badge.none').count(), 3, '一開始全部未考');
@@ -50,7 +55,10 @@ export default async function ({ page, base, sql, shot }) {
   assert.match(await card7.textContent(), /已通過/);
   assert.match(await card7.textContent(), /100/);
 
-  // ── 有錯、有未答：再考一次階段 7 ──
+  // ── 有錯、有未答：主管再出一份，再考一次階段 12 ──
+  await lockPaper(sql, EMP1, 12);
+  await page.goto(base + '/home.html');
+  await page.waitForSelector('.stage-card');
   await page.click('.stage-card[data-stage="12"] a.btn');
   await page.waitForSelector('.qnav');
   const att2 = await latestAttempt(sql, EMP1);
@@ -76,13 +84,11 @@ export default async function ({ page, base, sql, shot }) {
   const rows = await sql(`select count(*)::int c from wrong_book where user_id = '${EMP1}'`);
   assert.ok(rows[0].c >= 4, '錯題區應收進錯題');
 
-  // 題庫沒有可用題目（全被刪除）→ 友善訊息
-  await sql('update questions set removed = true');
+  // 沒有鎖定的考卷（主管還沒出題）→ 友善訊息
   await page.goto(base + '/exam.html?stage=12');
   await page.waitForSelector('.notice');
-  assert.match(await page.textContent('.notice'), /尚無可用題目/);
+  assert.match(await page.textContent('.notice'), /還沒有為你出這份考卷/);
   // 舊的章節階段已停用
-  await sql('update questions set removed = false');
   await page.goto(base + '/exam.html?stage=7');
   await page.waitForSelector('.notice');
   assert.match(await page.textContent('.notice'), /階段不正確/);

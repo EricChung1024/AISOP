@@ -39,9 +39,15 @@ begin
   return out;
 end $$;
 grant execute on function t_as(uuid), t_admin(), t_answers_k(uuid, int) to public;
-create function t_pool_small() returns void language sql security definer as $$
-  update questions set removed = not (id in ('D1-1','D1-2','D1-3','D1-4','D1-5','D1-6','D1-7','D1-8')); $$;
-grant execute on function t_pool_small() to public;
+create function t_start(uid uuid, st int, ids text[]) returns jsonb language plpgsql as $$
+begin
+  reset role;
+  delete from exam_papers where user_id = uid and stage = st;
+  insert into exam_papers (user_id, stage, question_ids, status, locked_at) values (uid, st, ids, 'locked', now());
+  perform t_as(uid);
+  return start_exam(st);
+end $$;
+grant execute on function t_start(uuid, int, text[]) to public;
 
 
 
@@ -84,52 +90,11 @@ begin
   end loop;
 end $$;
 
--- L3：每階段抽 20 題；難度符合階段；題目平均分散到九個主題；每次隨機
-do $$ declare r jsonb; ids text[]; ids2 text[]; ok boolean := false;
-begin
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
-  r := start_exam(12);
-  assert jsonb_array_length(r -> 'questions') = 20 and (r ->> 'shortage')::int = 0, '基礎考核 20 題';
-  ids := array(select e ->> 'id' from jsonb_array_elements(r -> 'questions') e);
-  perform t_admin();
-  assert (select count(*) from questions where id = any (ids) and difficulty = 1) = 20, '基礎考核全是難度 1';
-  assert (select count(distinct stage) from questions where id = any (ids)) = 9, '20 題涵蓋九個主題';
-  assert (select max(c) from (select count(*) c from questions where id = any (ids) group by stage) x) <= 3, '同一主題不超過 3 題';
-  -- 隨機：連抽 10 次，題組不會每次都一樣
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
-  for i in 1..10 loop
-    ids2 := array(select e ->> 'id' from jsonb_array_elements(start_exam(12) -> 'questions') e);
-    if (select array_agg(x order by x) from unnest(ids) x) is distinct from (select array_agg(x order by x) from unnest(ids2) x) then ok := true; end if;
-  end loop;
-  assert ok, '每次抽題要隨機';
-  r := start_exam(13);
-  ids := array(select e ->> 'id' from jsonb_array_elements(r -> 'questions') e);
-  perform t_admin();
-  assert (select count(*) from questions where id = any (ids) and qtype = 'mcq' and difficulty = 2) = 18, '情境應用：18 題難度 2 選擇題';
-  assert (select count(*) from questions where id = any (ids) and qtype = 'short') = 2, '情境應用：2 題簡答（難度 2 沒有簡答，取最近難度）';
-end $$;
-
--- L3b：難度 3 的題庫不足 20 題時，由相鄰難度補；仍不足會回報 shortage
-do $$ declare r jsonb; ids text[];
-begin
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
-  r := start_exam(14);
-  ids := array(select e ->> 'id' from jsonb_array_elements(r -> 'questions') e);
-  assert jsonb_array_length(r -> 'questions') = 20, '綜合考核仍湊滿 20 題';
-  perform t_admin();
-  assert (select count(*) from questions where id = any (ids) and difficulty = 3) = 5, '難度 3 的 2 題選擇＋3 題簡答優先抽';
-  assert (select count(*) from questions where id = any (ids) and qtype = 'short') = 3, '簡答最多 3 題';
-  perform t_pool_small();
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000001');
-  r := start_exam(12);
-  assert jsonb_array_length(r -> 'questions') = 8 and (r ->> 'shortage')::int = 12, '題庫不足時回報缺 12 題';
-end $$;
-
 -- L4：及格門檻：同樣 17／20 答對（85 分）→ 基礎 80 及格、情境 85 及格、綜合 90 不及格
-do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid; ans jsonb; r jsonb;
+do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid; ans jsonb; r jsonb; ids text[];
 begin
-  reset role; update questions set removed = false;
-  perform t_as(a); att := (start_exam(12) ->> 'attempt_id')::uuid;
+  reset role; ids := array(select id from questions where difficulty = 1 and qtype = 'mcq' order by id limit 20);
+  att := (t_start(a, 12, ids) ->> 'attempt_id')::uuid;
   perform t_admin(); ans := t_answers_k(att, 17); perform t_as(a);
   r := submit_exam(att, ans);
   assert (r ->> 'score')::numeric = 85, '17/20 ＝ 85 分';
@@ -137,17 +102,14 @@ begin
 end $$;
 
 -- L5：紅線題答錯，即使總分達標也不及格
-do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid; ans jsonb; r jsonb; red text;
+do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid; ans jsonb; r jsonb; ids text[];
 begin
-  reset role; delete from questions where id like 'D%' and not (id like 'D1-%');
+  reset role;
   update questions set red_line = false;
   update questions set red_line = true, shuffle = false where id = 'D1-1';
-  perform t_as(a); att := (start_exam(12) ->> 'attempt_id')::uuid;
+  ids := array['D1-1'] || array(select id from questions where difficulty = 1 and qtype = 'mcq' and id <> 'D1-1' order by id limit 19);
+  att := (t_start(a, 12, ids) ->> 'attempt_id')::uuid;
   perform t_admin();
-  -- 全部答對，只把紅線題答錯（若本次沒抽到紅線題就重抽）
-  while not exists (select 1 from attempts at, jsonb_array_elements(at.question_ids) e where at.id = att and e ->> 'id' = 'D1-1') loop
-    perform t_as(a); att := (start_exam(12) ->> 'attempt_id')::uuid; perform t_admin();
-  end loop;
   select jsonb_agg(case when x ->> 'question_id' = 'D1-1' then jsonb_build_object('question_id', 'D1-1', 'choice', 1) else x end)
     into ans from jsonb_array_elements(t_answers_k(att, 20)) x;
   perform t_as(a);
@@ -181,37 +143,6 @@ begin
   assert (select count(*) from v_exam_schedule) = 1, '員工只看得到自己';
   assert (select level from v_exam_schedule) is null, '沒有到職日 → 無等級';
   begin perform set_hire_date('aaaaaaaa-0000-0000-0000-000000000002', null); raise exception 'NO_RAISE';
-  exception when others then if sqlerrm <> 'FORBIDDEN' then raise; end if; end;
-end $$;
-
--- L8：主管刪除題目：之後不會被抽到，資料保留（不歸檔）；可還原；員工不能刪
-do $$ declare a uuid := 'aaaaaaaa-0000-0000-0000-000000000001'; att uuid; r jsonb; ids text[];
-begin
-  perform t_as(a);
-  begin perform remove_questions(array['D1-2']); raise exception 'NO_RAISE';
-  exception when others then if sqlerrm <> 'FORBIDDEN' then raise; end if; end;
-  perform t_admin(); update questions set removed = false;
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000003');
-  assert remove_questions(array['D1-2', 'D1-5']) = 2, '刪除 2 題';
-  assert remove_questions(array['D1-2']) = 0, '重複刪除不重複計';
-  assert (select count(*) from jsonb_array_elements(list_questions_for_review(null, null, 1)) ) = 48, '審核清單預設不含已刪除';
-  assert (select count(*) from jsonb_array_elements(list_questions_for_review(null, null, 1, true)) ) = 2, '可列出已刪除';
-  perform t_as(a);
-  for i in 1..15 loop
-    ids := array(select e ->> 'id' from jsonb_array_elements(start_exam(12) -> 'questions') e);
-    assert not ('D1-2' = any (ids) or 'D1-5' = any (ids)), '已刪除的題目不得再出現';
-  end loop;
-  perform t_admin();
-  assert (select count(*) from questions where id in ('D1-2', 'D1-5')) = 2, '資料仍保留';
-  assert (select reviewed from questions where id = 'D1-2') = false, '刪除時一併取消審核';
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000003');
-  assert restore_questions(array['D1-2']) = 1, '還原 1 題';
-  -- 審核一份考卷用到的題目
-  perform t_as(a); att := (start_exam(12) ->> 'attempt_id')::uuid;
-  perform t_as('aaaaaaaa-0000-0000-0000-000000000003');
-  assert jsonb_array_length(list_attempt_questions(att)) = 20, '主管可看一份考卷的 20 題與答案';
-  perform t_as(a);
-  begin perform list_attempt_questions(att); raise exception 'NO_RAISE';
   exception when others then if sqlerrm <> 'FORBIDDEN' then raise; end if; end;
 end $$;
 

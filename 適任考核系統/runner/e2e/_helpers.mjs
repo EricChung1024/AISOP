@@ -21,3 +21,14 @@ export async function latestAttempt(sql, userId) {
 
 export const EMP1 = 'e0000000-0000-0000-0000-000000000001';
 export const EMP2 = 'e0000000-0000-0000-0000-000000000002';
+
+/** 模擬主管已鎖定考卷：為員工建立指定階段、依難度抽 20 題的已鎖定考卷。 */
+export async function lockPaper(sql, userId, stage = 12) {
+  const diff = { 12: 1, 13: 2, 14: 3 }[stage];
+  const shorts = { 12: 0, 13: 2, 14: 3 }[stage];
+  const mcq = await sql(`select id from questions where qtype <> 'short' and not removed order by abs(difficulty - ${diff}), random() limit ${20 - shorts}`);
+  const sh = shorts ? await sql(`select id from questions where qtype = 'short' and not removed order by abs(difficulty - ${diff}), random() limit ${shorts}`) : [];
+  const ids = [...mcq, ...sh].map((q) => `'${q.id}'`).join(',');
+  await sql(`delete from exam_papers where user_id = '${userId}' and stage = ${stage}`);
+  await sql(`insert into exam_papers (user_id, stage, question_ids, status, locked_at) values ('${userId}', ${stage}, array[${ids}]::text[], 'locked', now())`);
+}
