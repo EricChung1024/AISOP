@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { errorTypeCounts, stageLabel, stageShort, statusOf, esc, errorMessage, fmtDate, dueStatus, createErrorLabel } from './format.js';
+import { errorTypeCounts, stageLabel, stageShort, statusOf, esc, errorMessage, fmtDate, dueStatus, createErrorLabel, DIFFICULTY_NAMES } from './format.js';
 
 test('errorTypeCounts counts rows and sorts by count desc then name', () => {
   const rows = ['B', 'A', 'C', 'B', 'A', 'A'].map((error_type) => ({ error_type }));
@@ -92,4 +92,8 @@ test('errorMessage covers the account-management codes', () => {
   assert.match(errorMessage('TOO_MANY'), /200/);
   assert.match(errorMessage('NOT_EMPLOYEE'), /員工/);
   assert.match(errorMessage('FUNCTION_FAILED'), /稍後/);
+});
+
+test('difficulty is labelled Lv.1 to Lv.3', () => {
+  assert.deepEqual(Object.values(DIFFICULTY_NAMES), ['Lv.1', 'Lv.2', 'Lv.3']);
 });
